@@ -8,7 +8,7 @@ assignment = sys.argv[2]
 index = course + '-' + assignment + '-'
 print index
 
-token = '002fa44e635bdcba526e69f5130f117abc6f1349'
+token = 'Insert Token Here'
 
 url = 'https://api.github.com/orgs/StevensDeptECE/repos'
 

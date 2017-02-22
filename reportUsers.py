@@ -1,7 +1,7 @@
 import urllib2
 import json
+import subprocess
 from subprocess import call
-from subprocess import Popen
 import sys
 import os
 
@@ -29,10 +29,10 @@ users = 'https://api.github.com/orgs/StevensDeptECE/repos'
 
 
 call (["git", "pull"])
-#output = subprocess.Popen(["git", "log" "--since=yesterday"], stdout=subprocess.PIPE).communicate()[0]
-#print output
+output = subprocess.Popen(["git", "log"], stdout=subprocess.PIPE).communicate()[0]
+print output
 
-call(["git", "log", "--since=yesterday"])
+#call(["git", "log", "--since=yesterday"])
 
 
 #print users

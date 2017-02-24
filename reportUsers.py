@@ -14,26 +14,20 @@ home = os.environ['HOME']
 file = open(home + "/github.tok","r")
 token = file.read()
 file.close() 
-#print token
 
-#url = 'https://api.github.com/orgs/StevensDeptECE/repos'
+repo = "LMS640"
 
-#req = urllib2.Request(url)
-#req.add_header('Authorization', 'token %s' % token)
-#res = urllib2.urlopen(req)
-#data = json.load(res)
+userUrl = 'https://api.github.com/repos/StevensDeptECE/LMS640/collaborators'
+req = urllib2.Request(userUrl)
+req.add_header('Authorization', 'token %s' % token)
+res = urllib2.urlopen(req)
+users = json.load(res)
 
-users = []
+userid = []
+for user in users:
+    userid.append(user['login'])
 
-users = 'https://api.github.com/orgs/StevensDeptECE/repos'
+for u in userid:
+    call(["git", "log", '--since="yesterday"', "--author=" + u])
 
-
-call (["git", "pull"])
-output = subprocess.Popen(["git", "log"], stdout=subprocess.PIPE).communicate()[0]
-print output
-
-#call(["git", "log", "--since=yesterday"])
-
-
-#print users
-
+#call(["git", "log", '--since="yesterday"'])

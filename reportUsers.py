@@ -27,7 +27,18 @@ userid = []
 for user in users:
     userid.append(user['login'])
 
-for u in userid:
-    call(["git", "log", '--since="yesterday"', "--author=" + u])
+#for u in userid:
+#    call(["git", "log", '--since="yesterday"', "--author=" + u])
 
 #call(["git", "log", '--since="yesterday"'])
+
+with open('test.log', "w") as outfile:
+    subprocess.call(["git", "log", "-p"], stdout=outfile)
+#call(["git", "log", "-p", ">test.log"])
+
+file = open("test.log","r")
+gitlog = file.read()
+file.close()
+gitlines = gitlog.splitlines();
+for line in gitlines:
+    print line[0:2]

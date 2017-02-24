@@ -2,7 +2,7 @@
 
 require LTI;
 
-LTI::loadAuth('auth.dat');
+LTI::loadAuth();
 my $users = LTI::list("courses/20041/users", ['id', 'name', 'login_id']);
 foreach my $c (@$users){
     print $c->[0], $c->[1], $c->[2], "\n";

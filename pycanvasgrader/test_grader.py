@@ -6,7 +6,6 @@ import json
 
 # 3rd-party
 import requests
-from requests_oauthlib import OAuth2
 
 # package-specific
 from .pycanvasgrader import PyCanvasGrader

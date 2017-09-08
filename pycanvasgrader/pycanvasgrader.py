@@ -61,7 +61,7 @@ class TestSkeleton:
         def run(self):
             """
             Runs the Command
-            :return: A dictonary containing its return code, stdout, and stderr
+            :return: A dictionary containing its return code, stdout, and stderr
             """
             proc = subprocess.run([self.command, self.args], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=self.timeout, encoding='UTF-8')
             return {'returncode': proc.returncode, 'stdout': proc.stdout, 'stderr': proc.stderr}

@@ -7,15 +7,83 @@ MUST create an 'access.token' file in the same directory as this file with a val
 # built-ins
 import py
 import json
+import re
 import os
+import subprocess
 from zipfile import ZipFile
 
 # 3rd-party
 import requests
 
 # globals
-RUN_WITH_TESTS = True
+RUN_WITH_TESTS = False
 
+
+class TestSkeleton:
+    """
+    An abstract skeleton to handle testing of a specific group of files
+    """
+    def __init__(self, commands: list, extensions: str=None, file_regex: str=None):
+        """
+        :param commands: A list of Command objects. These will be run in the order that they are added.
+        :param extensions: Which file extensions this skeleton applies to
+        :param file_regex: A regular expression to match files for this skeleton. Combines with extensions
+        """
+        if not any((extensions, file_regex)):
+            raise ValueError('Either extensions or file_regex must be defined')
+        self.commands = commands
+        self.extensions = extensions
+        self.file_regex = file_regex
+
+    # TODO Create tests
+    class Command:
+        """
+        An abstract command to be run in a console
+        """
+        def __init__(self, command: str, args: str, print_output: bool=True, output_match: str=None, output_regex: str=None, timeout: int=None):
+            """
+            :param command: The command to be run.
+            :param args: The arguments to pass to the command. Use %s to denote the file name
+            :param print_output: Whether to visibly print the output
+            :param output_match: An exact string that the output should match. If this and output_regex are None, then this Command always 'matches'
+            :param output_regex: A regular expression that the string should match. Combines with output_match.
+            If this and output_match are None, then this Command always 'matches'
+            :param timeout: Time, in seconds, that this Command should run for before timing out
+
+            """
+            self.command = command
+            self.args = args
+            self.output_match = output_match
+            self.output_regex = re.compile(output_regex)
+            self.print_output = print_output
+            self.timeout = timeout
+
+        def run(self):
+            """
+            Runs the Command
+            :return: A dictonary containing its return code, stdout, and stderr
+            """
+            proc = subprocess.run([self.command, self.args], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=self.timeout, encoding='UTF-8')
+            return {'returncode': proc.returncode, 'stdout': proc.stdout, 'stderr': proc.stderr}
+
+        def run_and_match(self):
+            """
+            Runs the command and matches the output to the output_match/regex. If neither are defined then this always returns true
+            :return: Whether the output matched or not
+            """
+            result = self.run()
+            if self.print_output:
+                print(result['stdout'])
+
+            if not any((self.output_match, self.output_regex)):
+                return True
+
+            if self.output_match and self.output_match in result['stdout']:
+                return True
+
+            if self.output_regex.match(result['stdout']):
+                return True
+            return False
 
 class PyCanvasGrader:
     """
@@ -168,7 +236,7 @@ def main():
     while invalid_zip:
         zip_list = []
         print('Choose a zip file to use:')
-        sub = 0 # This is to keep indices visually correct while excluding non-zip files
+        sub = 0  # This is to keep indices visually correct while excluding non-zip files
         for count, zip_name in enumerate(os.listdir('zips')):
             if zip_name.split('.')[-1] != 'zip':
                 sub += 1

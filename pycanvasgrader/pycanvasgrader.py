@@ -133,52 +133,59 @@ def choose_bool() -> bool:
         return False
 
 
-def choose_zip() -> str:
-    name = input()
-    if name[-4:] != '.zip':
-        name += '.zip'
-    if not os.path.isfile('zips/' + name):
-        print('Could not find the file. Make sure it is in the zips directory and try again:')
-        return choose_zip()
-    else:
-        return name
-
-
 def main():
+    # Initialize grading session and fetch courses
     grader = PyCanvasGrader()
     course_list = grader.courses('teacher')
 
+    # Have user select course
     print('Choose a course from the following list:')
     for count, course in enumerate(course_list):
         print('%i.\t%s (%s)' % (count + 1, course.get('name'), course.get('course_code')))
-
-    course_choice = choose_val(len(course_list)) - 1
+    course_choice = choose_val(len(course_list)) - 1  # the plus and minus 1 are to hide the 0-based numbering
 
     print('Show only ungraded assignments? (y or n):')
     ungraded = choose_bool()
-
     course_id = course_list[course_choice].get('id')
     assignment_list = grader.assignments(course_list[course_choice].get('id'), ungraded=ungraded)
 
+    # Have user choose assignment
     print('Choose an assignment to grade:')
     for count, assignment in enumerate(assignment_list):
         print('%i.\t%s' % (count + 1, assignment.get('name')))
-
     assignment_choice = choose_val(len(assignment_list)) - 1
     assignment_id = assignment_list[assignment_choice].get('id')
+
+    # Remind user to get latest zip file
     print('If you haven\'t already, please download the most current submissions.zip for this assignment:\n' +
           assignment_list[assignment_choice].get('submissions_download_url'))
 
+    input('\nPress enter when this you have placed this zip file into the /zips/ directory')
+
+    # Have user choose zip
     invalid_zip = True
     user_file_dict = {}
     while invalid_zip:
-        print('Place the zip in the \'zips\' directory, and then enter the zip\'s name here:')
-        zip_file = choose_zip()
+        zip_list = []
+        print('Choose a zip file to use:')
+        sub = 0 # This is to keep indices visually correct while excluding non-zip files
+        for count, zip_name in enumerate(os.listdir('zips')):
+            if zip_name.split('.')[-1] != 'zip':
+                sub += 1
+                continue
+            zip_list.append(zip_name)
+            print('%i.\t%s' % (count - sub + 1, zip_name))  # Again, the plus and minus 1 are to hide the 0-based numbering
+
+        selection = choose_val(len(zip_list)) - 1
+        zip_file = zip_list[selection]
 
         user_file_dict = parse_zip(zip_file)
         if len(user_file_dict) > 0:
             invalid_zip = False
+        else:
+            print('This zip is invalid. Make sure you do not change the names inside the zip and try again')
 
+    # Get list of submissions for this assignment
     submission_list = grader.submissions(course_id, assignment_id)
     if len(submission_list) < 1:
         print('There are no submissions for this assignment.')
@@ -186,6 +193,7 @@ def main():
         main()
         exit(0)
 
+    # Match the user IDs found in the zip with the IDs who submitted the assignment online
     user_submission_dict = {}
     for user_id, filename in user_file_dict.items():
         for submission in submission_list:
@@ -208,7 +216,7 @@ def main():
     print('Students to grade: [Name (email)]')
     for user_id in user_submission_dict:
         user_data = grader.user(user_id)
-        print(str(user_data.get('name')) + '(%s)' % user_data.get('email'))
+        print(str(user_data.get('name')) + '\t(%s)' % user_data.get('email'))
 
     input('Press enter to begin grading')
 

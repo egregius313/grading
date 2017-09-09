@@ -2,7 +2,6 @@
 """
 Automates the grading of programming assignments on Canvas.
 MUST create an 'access.token' file in the same directory as this file with a valid Canvas OAuth2 token
-MUST clear temp directory before running program (TODO will fix this)
 REQUIRED File structure:
 - pycanvasgrader
   -- skeletons
@@ -395,9 +394,7 @@ def main():
 
     if len(assignment_list) < 1:
         input('No assignments were found. Press enter to restart')
-        grader.close()
-        main()
-        exit(0)
+        restart_program(grader)
 
     # Have user choose assignment
     print('Choose an assignment to grade:')
@@ -436,9 +433,7 @@ def main():
     submission_list = grader.submissions(course_id, assignment_id)
     if len(submission_list) < 1:
         print('There are no submissions for this assignment.')
-        grader.close()
-        main()
-        exit(0)
+        restart_program(grader)
 
     print('Only grade currently ungraded submissions? (y or n):')
     ungraded_only = choose_bool()
@@ -456,9 +451,7 @@ def main():
 
     if len(user_submission_dict) < 1:
         print('Could not match any file names in the zip to any online submissions.')
-        grader.close()
-        main()
-        exit(0)
+        restart_program(grader)
 
     s = ''
     if len(user_submission_dict) > 1:
@@ -466,9 +459,7 @@ def main():
     print('Successfully matched %i submission%s to files in the zip file. Is this correct? (y or n):' % (len(user_submission_dict), s))
     correct = choose_bool()
     if not correct:
-        grader.close()
-        main()
-        exit(0)
+        restart_program(grader)
 
     skeleton_list = parse_skeletons()
     if len(skeleton_list) < 1:
@@ -477,9 +468,7 @@ def main():
             print('unimplemented')
         else:
             pass
-        grader.close()
-        main()
-        exit(0)
+        restart_program(grader)
 
     print('Choose a skeleton to use for grading this assignment:')
     for count, skeleton in enumerate(skeleton_list, 1):

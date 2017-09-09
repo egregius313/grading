@@ -4,7 +4,7 @@
 
   "commands": {
 
-    "command_1": {
+    "test_1": {
       "command": "C:\\Program Files\\Java\\jdk1.8.0_92\\bin\\javac.exe",
       "args": "%s",
       "print_output": true,
@@ -13,7 +13,7 @@
       "negate_match": true,
       "ask_for_target": true
     },
-    "command_2": {
+    "test_2": {
       "command": "java",
       "args": "%s",
       "print_output": true,

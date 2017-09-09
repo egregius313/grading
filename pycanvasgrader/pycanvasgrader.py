@@ -25,6 +25,7 @@ import requests
 
 # globals
 RUN_WITH_TESTS = False
+ONLY_RUN_TESTS = False
 
 
 class TestSkeleton:
@@ -70,10 +71,16 @@ class TestSkeleton:
     def run_tests(self) -> int:
         total_score = 0
         for count, command in enumerate(self.commands):
-            print('\n--Running command %i--' % count)
+            print('\n--Running test %i--' % (count + 1))
             if command.run_and_match():
+                if command.point_val > 0:
+                    print('--Adding %i points--' % command.point_val)
+                elif command.point_val == 0:
+                    print('--No points set for this test--')
+                else:
+                    print('--Subtracting %i points--' % abs(command.point_val))
                 total_score += command.point_val
-            print('Current score: %i' % total_score)
+            print('--Current score: %i--' % total_score)
         return total_score
 
 
@@ -189,19 +196,22 @@ class Command:
         """
         result = self.run()
         if self.print_output:
+            print('\t--OUTPUT--')
             print(result['stdout'])
-
+            print('\t--END OUTPUT--')
         if not any((self.output_match, self.output_regex)):
             return True
 
         if self.output_regex:
             if self.output_regex.match(result['stdout']):
+                print('--Matched regular expression--')
                 if self.negate_match:
                     return False
                 return True
 
         if self.output_match:
             if self.output_match in result['stdout']:
+                print('--Matched string comparison--')
                 if self.negate_match:
                     return False
                 return True
@@ -279,12 +289,13 @@ class PyCanvasGrader:
         response = self.session.get(url)
         return json.loads(response.text)
 
-    def user(self, user_id: int) -> dict:
+    def user(self, course_id: int, user_id: int) -> dict:
         """
+        :param course_id: The class to search
         :param user_id: The ID of the user
         :return: A dictionary with the user's information
         """
-        url = 'https://canvas.instructure.com/api/v1/users/' + str(user_id)
+        url = 'https://canvas.instructure.com/api/v1/courses/%i/users/%i' % (course_id, user_id)
 
         response = self.session.get(url)
         return json.loads(response.text)
@@ -444,27 +455,29 @@ def main():
     skeleton_choice = choose_val(len(skeleton_list)) - 1
     selected_skeleton = skeleton_list[skeleton_choice]
 
-    print('Students to grade: [Name (email)]')
+    name_dict = {}
+    print('Students to grade: [Name (email)]\n----')
     for user_id in user_submission_dict:
-        user_data = grader.user(user_id)
+        user_data = grader.user(course_id, user_id)
+        if user_data.get('name') is not None:
+            name_dict[user_id] = user_data['name']
         print(str(user_data.get('name')) + '\t(%s)' % user_data.get('email'))
-
-    input('Press enter to begin grading')
+    print('----\n')
+    input('Press enter to begin grading\n')
     for cur_user_id in user_submission_dict:
         try:
             os.chdir('temp/' + str(cur_user_id))
         except (WindowsError, OSError):
-            print('Could not access files for user %i. Skipping' % cur_user_id)
+            print('Could not access files for user "%i". Skipping' % cur_user_id)
             continue
-
-        print('Grading user %i...' % cur_user_id)
+        print('--Grading user "%s"--' % name_dict.get(cur_user_id))
         score = selected_skeleton.run_tests()
 
         if score < 0:
             score = 0
         action_list = ['Submit this grade', 'Modify this grade', 'Skip this submission', 'Re-grade this submission']
 
-        print('Grade for this assignment: %i' % score)
+        print('\n--All tests completed--\nGrade for this assignment: %i' % score)
         print('Choose an action:')
         for count, action in enumerate(action_list):
             print('%i.\t%s' % (count + 1, action))
@@ -475,6 +488,7 @@ def main():
 
 
 if __name__ == '__main__':
-    if RUN_WITH_TESTS:
+    if RUN_WITH_TESTS or ONLY_RUN_TESTS:
         py.test.cmdline.main()
-    main()
+    if not ONLY_RUN_TESTS:
+        main()

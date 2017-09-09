@@ -371,7 +371,7 @@ def restart_program(grader: PyCanvasGrader):
 def clear_tempdir():
     try:
         shutil.rmtree(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'temp'))
-    except Exception:
+    except BaseException:
         print('An error occurred while removing the "temp" directory. Please delete the directory manually and re-run the program')
         exit(1)
 

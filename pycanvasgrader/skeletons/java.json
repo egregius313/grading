@@ -2,7 +2,7 @@
   "descriptor": "Example Java skeleton",
   "extensions": ".java",
 
-  "commands": {
+  "tests": {
 
     "test_1": {
       "command": "C:\\Program Files\\Java\\jdk1.8.0_92\\bin\\javac.exe",

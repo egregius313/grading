@@ -159,7 +159,7 @@ class AssignmentTest:
                 sub += 1
                 continue
             file_list.append(file_name)
-            print('%i.\t%s' % (count - sub + 1, file_name))  # The plus and minus 1 are to hide the 0-based numbering
+            print('%i.\t%s' % (count - sub + 1, file_name))  # The minus 1 is to hide the 0-based numbering
 
         selection = choose_val(len(file_list)) - 1
         return file_list[selection]
@@ -418,7 +418,7 @@ def main():
         for count, zip_name in enumerate(glob.glob(os.path.join('zips', '*.zip')), 1):
             zip_name = os.path.basename(zip_name)
             zip_list.append(zip_name)
-            print('%i.\t%s' % (count, zip_name))  # Again, the plus and minus 1 are to hide the 0-based numbering
+            print('%i.\t%s' % (count, zip_name))  # Again, the minus 1 is to hide the 0-based numbering
 
         selection = choose_val(len(zip_list)) - 1
         zip_file = zip_list[selection]

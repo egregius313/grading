@@ -363,21 +363,23 @@ def parse_skeletons() -> list:
 
 def restart_program(grader: PyCanvasGrader):
     grader.close()
-    clear_tempdir()
+    init_tempdir()
     main()
     exit(0)
 
 
-def clear_tempdir():
-    try:
-        shutil.rmtree(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'temp'))
-    except BaseException:
-        print('An error occurred while removing the "temp" directory. Please delete the directory manually and re-run the program')
-        exit(1)
+def init_tempdir():
+        try:
+            if os.path.exists('temp'):
+                shutil.rmtree(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'temp'))
+            os.makedirs('temp', exist_ok=True)
+        except BaseException as e:
+            print('An error occurred while initializing the "temp" directory. Please delete/create the directory manually and re-run the program')
+            exit(1)
 
 
 def main():
-    clear_tempdir()
+    init_tempdir()
     # Initialize grading session and fetch courses
     grader = PyCanvasGrader()
     course_list = grader.courses('teacher')

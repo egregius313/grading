@@ -9,10 +9,12 @@ REQUIRED File structure:
   -- zips
   access.token
   pycanvasgrader.py
+
+  TODO test temp directory deletion timing on Windows
+  TODO implement skeleton creation wizard
 """
 
 # built-ins
-import glob
 import json
 import os
 import shutil
@@ -80,6 +82,7 @@ class TestSkeleton:
 class AssignmentTest:
     """
     An abstract test to be run on an assignment submission
+    TODO 'sequential' command requirement
     """
 
     def __init__(self, command: str, args: str = None, target_file: str = None, ask_for_target: bool = False,
@@ -258,7 +261,7 @@ class PyCanvasGrader:
         :param enrollment_type: (Optional) teacher, student, ta, observer, designer
         :return: A list of the user's courses as dictionaries, optionally filtered by enrollment_type
         """
-        url = 'https://canvas.instructure.com/api/v1/courses'
+        url = 'https://sit.instructure.com/api/v1/courses'
         if enrollment_type is not None:
             url += '?enrollment_type=' + enrollment_type
 
@@ -271,7 +274,7 @@ class PyCanvasGrader:
         :param ungraded: Whether to filter assignments by only those that have ungraded work. Default: True
         :return: A list of the course's assignments
         """
-        url = 'https://canvas.instructure.com/api/v1/courses/' + str(course_id) + '/assignments'
+        url = 'https://sit.instructure.com/api/v1/courses/' + str(course_id) + '/assignments'
         if ungraded:
             url += '?bucket=ungraded'
 
@@ -284,10 +287,38 @@ class PyCanvasGrader:
         :param assignment_id: The ID of the assignment
         :return: A list of the assignment's submissions
         """
-        url = 'https://canvas.instructure.com/api/v1/courses/' + str(course_id) + '/assignments/' + str(assignment_id) + '/submissions'
+        url = 'https://sit.instructure.com/api/v1/courses/' + str(course_id) + '/assignments/' + str(assignment_id) + '/submissions'
 
         response = self.session.get(url)
         return json.loads(response.text)
+
+    def download_submission(self, submission: dict, filepath: str) -> bool:
+        """
+        Attempts to download the attachments for a given submission into the requested directory. Creates the directory if it does not exist.
+        :param submission: The submission dictionary
+        :param filepath: the path where the submission attachments will be placed
+        :return: True if the request succeeded, False otherwise
+        """
+        try:
+            user_id = submission['user_id']
+            attachments = submission['attachments']
+        except ValueError:
+            return False
+
+        for attachment in attachments:
+            try:
+                url = attachment['url']
+                filename = attachment['filename']
+            except ValueError:
+                return False
+
+            os.makedirs(os.path.join('temp', str(user_id)), exist_ok=True)
+            r = self.session.get(url, stream=True)
+            with open(os.path.join(filepath, filename), 'wb') as f:
+                for chunk in r.iter_content(chunk_size=1024):
+                    if chunk:
+                        f.write(chunk)
+        return True
 
     def user(self, course_id: int, user_id: int) -> dict:
         """
@@ -295,13 +326,13 @@ class PyCanvasGrader:
         :param user_id: The ID of the user
         :return: A dictionary with the user's information
         """
-        url = 'https://canvas.instructure.com/api/v1/courses/%i/users/%i' % (course_id, user_id)
+        url = 'https://sit.instructure.com/api/v1/courses/%i/users/%i' % (course_id, user_id)
 
         response = self.session.get(url)
         return json.loads(response.text)
 
     def grade_submission(self, course_id, assignment_id, user_id, grade):
-        url = 'https://canvas.instructure.com/api/v1/courses/%i/assignments/%i/submissions/%i/?submission[posted_grade]=%i' \
+        url = 'https://sit.instructure.com/api/v1/courses/%i/assignments/%i/submissions/%i/?submission[posted_grade]=%i' \
               % (course_id, assignment_id, user_id, grade)
 
         response = self.session.put(url)
@@ -353,6 +384,10 @@ def choose_bool() -> bool:
 
 
 def parse_skeletons() -> list:
+    """
+    Responsible for validating and parsing the skeleton files in the "skeletons" directory
+    :return: A list of valid skeletons
+    """
     skeleton_list = []
     for skeleton_file in os.listdir('skeletons'):
         skeleton = TestSkeleton.from_file(skeleton_file)
@@ -371,9 +406,10 @@ def restart_program(grader: PyCanvasGrader):
 def init_tempdir():
         try:
             if os.path.exists('temp'):
-                shutil.rmtree(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'temp'))
+                os.rename('temp', 'old-temp')
+                shutil.rmtree(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'old-temp'))
             os.makedirs('temp', exist_ok=True)
-        except BaseException as e:
+        except BaseException:
             print('An error occurred while initializing the "temp" directory. Please delete/create the directory manually and re-run the program')
             exit(1)
 
@@ -382,7 +418,20 @@ def main():
     init_tempdir()
     # Initialize grading session and fetch courses
     grader = PyCanvasGrader()
-    course_list = grader.courses('teacher')
+
+    action_list = ['teacher', 'ta']
+
+    print('Choose a class role to filter by:')
+    for count, action in enumerate(action_list, 1):
+        print('%i.\t%s' % (count, action))
+    action_choice = choose_val(len(action_list)) - 1
+    selected_role = action_list[action_choice]
+
+    course_list = grader.courses(selected_role)
+    if len(course_list) < 1:
+        input('No courses were found. Press enter to restart')
+        restart_program(grader)
+
     # Have user select course
     print('Choose a course from the following list:')
     for count, course in enumerate(course_list, 1):
@@ -405,60 +454,34 @@ def main():
     assignment_choice = choose_val(len(assignment_list)) - 1
     assignment_id = assignment_list[assignment_choice].get('id')
 
-    # Remind user to get latest zip file
-    print('If you haven\'t already, please download the most current submissions.zip for this assignment:\n' +
-          assignment_list[assignment_choice].get('submissions_download_url'))
-
-    input('\nPress enter when this you have placed this zip file into the "zips" directory')
-
-    # Have user choose zip
-    invalid_zip = True
-    user_ids = []
-    while invalid_zip:
-        zip_list = []
-        print('Choose a zip file to use:')
-        for count, zip_name in enumerate(glob.glob(os.path.join('zips', '*.zip')), 1):
-            zip_name = os.path.basename(zip_name)
-            zip_list.append(zip_name)
-            print('%i.\t%s' % (count, zip_name))  # Again, the minus 1 is to hide the 0-based numbering
-
-        selection = choose_val(len(zip_list)) - 1
-        zip_file = zip_list[selection]
-
-        user_ids = parse_zip(zip_file)
-        if len(user_ids) > 0:
-            invalid_zip = False
-        else:
-            print('This zip is invalid. Make sure you do not change the names inside the zip and try again')
-
     # Get list of submissions for this assignment
     submission_list = grader.submissions(course_id, assignment_id)
     if len(submission_list) < 1:
-        print('There are no submissions for this assignment.')
+        input('There are no submissions for this assignment. Press enter to restart')
         restart_program(grader)
 
     print('Only grade currently ungraded submissions? (y or n):')
     ungraded_only = choose_bool()
     # Match the user IDs found in the zip with the IDs in the online submission
     user_submission_dict = {}
-    for user_id in user_ids:
-        for submission in submission_list:
-            if ungraded_only and submission.get('grader_id') is not None:  # Skip assignments that have been graded already
-                continue
-            long_id = submission.get('user_id')
-            if str(user_id) in str(long_id):
-                file_path = os.path.join(os.getcwd(), 'temp')
-                os.rename(os.path.join(file_path, str(user_id)), os.path.join(file_path, str(long_id)))
-                user_submission_dict[long_id] = submission['id']
+    for submission in submission_list:
+        if ungraded_only and submission.get('grader_id') is not None:  # Skip assignments that have been graded already
+            continue
+        user_id = submission.get('user_id')
+        if submission.get('attachments') is not None:
+            if grader.download_submission(submission, os.path.join('temp', str(user_id))):
+                user_submission_dict[user_id] = submission['id']
+            else:
+                print('There was a problem downloading this user\'s submission. Skipping.')
 
     if len(user_submission_dict) < 1:
-        print('Could not match any file names in the zip to any online submissions.')
+        input('Could not download any submissions. Press enter to restart')
         restart_program(grader)
 
     s = ''
     if len(user_submission_dict) > 1:
         s = 's'
-    print('Successfully matched %i submission%s to files in the zip file. Is this correct? (y or n):' % (len(user_submission_dict), s))
+    print('Successfully retrieved %i submission%s. Is this correct? (y or n):' % (len(user_submission_dict), s))
     correct = choose_bool()
     if not correct:
         restart_program(grader)
@@ -470,7 +493,7 @@ def main():
             print('unimplemented')
         else:
             pass
-        restart_program(grader)
+        exit(0)
 
     print('Choose a skeleton to use for grading this assignment:')
     for count, skeleton in enumerate(skeleton_list, 1):

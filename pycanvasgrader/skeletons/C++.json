@@ -1,0 +1,11 @@
+{
+  "descriptor": "C++ high automation",
+  "automation_level": 3,
+  "tests": {
+    "compile_test": {
+      "command": "g++ -std=c++11",
+      "numeric_match": [[8.98,9],[9.98,10], 12],
+      "single_file": true
+    }
+  }
+}

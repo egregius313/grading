@@ -6,12 +6,12 @@ REQUIRED File structure:
 - pycanvasgrader
   -- skeletons
   -- temp
-  -- zips
   access.token
   pycanvasgrader.py
 
   TODO test temp directory deletion timing on Windows
   TODO implement skeleton creation wizard
+  TODO test/implement visual grading (ask for grade after test runs)
 """
 
 # built-ins
@@ -20,10 +20,9 @@ import os
 import shutil
 import re
 import subprocess
-from zipfile import ZipFile
-import py
 
 # 3rd-party
+import py
 import requests
 
 # globals
@@ -36,13 +35,15 @@ class TestSkeleton:
     An abstract skeleton to handle testing of a specific group of files
     """
 
-    def __init__(self, descriptor: str, tests: list):
+    def __init__(self, descriptor: str, automation_level: str, tests: list):
         """
         :param descriptor: The description of this TestSkeleton
         :param tests: A list of AssignmentTest objects. These will be run in the order that they are added.
+        :param automation_level: How many questions the grader should ask
         """
         self.descriptor = descriptor
         self.tests = tests
+        self.automation_level = automation_level
 
     @classmethod
     def from_file(cls, filename):
@@ -85,12 +86,14 @@ class AssignmentTest:
     TODO 'sequential' command requirement
     """
 
-    def __init__(self, command: str, args: str = None, target_file: str = None, ask_for_target: bool = False,
-                 include_filetype: bool = True, print_output: bool = True, output_match: str = None, output_regex: str = None,
+    def __init__(self, command: str, args: str = None, single_file: bool = False, target_file: str = None,
+                 ask_for_target: bool = False, include_filetype: bool = True, print_output: bool = True,
+                 output_match: str = None, output_regex: str = None, numeric_match: list = None,
                  negate_match: bool = False, exact_match: bool = False, timeout: int = None, point_val: int = 0):
         """
         :param command: The command to be run.
         :param args: The arguments to pass to the command. Use %s to denote a file name
+        :param single_file: Whether to assume the assignment is a single file and use the first file found as %s
         :param target_file: The file to replace %s with
         :param ask_for_target: Whether to prompt for a file in the current directory. Overrides file_target
         :param include_filetype: Whether to include the filetype in the %s substitution
@@ -98,6 +101,7 @@ class AssignmentTest:
         :param output_match: An exact string that the output should match. If this and output_regex are None, then this Command always 'matches'
         :param output_regex: A regular expression that the string should match. Combines with output_match.
         If this and output_match are None, then this Command always 'matches'
+        :param numeric_match: Enables numeric matching. This overrides string and regex matching
         :param negate_match: Whether to negate the result of checking output_match and output_regex
         :param exact_match: Whether the naive string match (output_match) should be an exact check or a substring check
         :param timeout: Time, in seconds, that this Command should run for before timing out
@@ -105,6 +109,7 @@ class AssignmentTest:
         """
         self.command = command
         self.args = args
+        self.single_file = single_file
         self.target_file = target_file
         self.ask_for_target = ask_for_target
         self.include_filetype = include_filetype
@@ -113,6 +118,7 @@ class AssignmentTest:
             self.output_regex = re.compile(output_regex)
         else:
             self.output_regex = None
+        self.numeric_match = numeric_match
         self.negate_match = negate_match
         self.exact_match = exact_match
         self.print_output = print_output
@@ -127,21 +133,24 @@ class AssignmentTest:
             return None
         else:
             args = json_dict.get('args')
+            single_file = json_dict.get('single_file')
             target_file = json_dict.get('target_file')
             ask_for_target = json_dict.get('ask_for_target')
             include_filetype = json_dict.get('include_filetype')
             print_output = json_dict.get('print_output')
             output_match = json_dict.get('output_match')
             output_regex = json_dict.get('output_regex')
+            numeric_match = json_dict.get('numeric_match')
             negate_match = json_dict.get('negate_match')
             exact_match = json_dict.get('exact_match')
             timeout = json_dict.get('timeout')
             point_val = json_dict.get('point_val')
 
-            vars_dict = {'command': command, 'args': args, 'target_file': target_file,
+            vars_dict = {'command': command, 'args': args, 'single_file': single_file, 'target_file': target_file,
                          'ask_for_target': ask_for_target, 'include_filetype': include_filetype,
                          'print_output': print_output, 'output_match': output_match, 'output_regex': output_regex,
-                         'negate_match': negate_match, 'exact_match': exact_match, 'timeout': timeout, 'point_val': point_val}
+                         'numeric_match': numeric_match, 'negate_match': negate_match, 'exact_match': exact_match,
+                         'timeout': timeout, 'point_val': point_val}
             args_dict = {}
             for var_name, val in vars_dict.items():
                 if val is not None:
@@ -200,6 +209,28 @@ class AssignmentTest:
             print('\t--END OUTPUT--')
         if not any((self.output_match, self.output_regex)):
             return True
+
+        if self.numeric_match is not None:
+            numeric_match = list(self.numeric_match)  # Clone the list
+            extracted_nums = []
+            for t in result['stdout'].split():
+                try:
+                    extracted_nums.append(float(t))
+                except ValueError:
+                    pass
+            if len(extracted_nums) == 0:
+                return False
+
+            for num in numeric_match:
+                for number in extracted_nums:
+                    if isinstance(num, list):
+                        if num[0] <= number <= num[1]:
+                            numeric_match.remove(num)
+                    elif isinstance(num, (int, float)):
+                        if number == num:
+                            numeric_match.remove(num)
+
+            return len(numeric_match) == 0
 
         if self.output_regex:
             if self.output_regex.match(result['stdout']):

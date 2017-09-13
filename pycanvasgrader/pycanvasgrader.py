@@ -21,8 +21,8 @@ import shutil
 import re
 import subprocess
 from zipfile import ZipFile
-
 import py
+
 # 3rd-party
 import requests
 
@@ -337,32 +337,6 @@ class PyCanvasGrader:
 
         response = self.session.put(url)
         return json.loads(response.text)
-
-
-def parse_zip(zip_file: str) -> set:
-    """
-    Maps file names to user IDs from a zip of downloaded Canvas submissions
-    :param zip_file: The name of the zip file to parse
-    :return: if the zip can be parsed, a dictionary containing the user ID's mapped to the parsed file name, otherwise an empty dict
-    """
-    user_ids = set()
-
-    with ZipFile(os.path.join('zips', zip_file), 'r') as z:
-        for name in z.namelist():
-            if name.count('_') < 3:
-                print('Skipping file: ' + name + '. Invalid filename')
-            else:
-                (username, user_id, unknown, file) = name.split('_', maxsplit=3)
-                user_ids.add(user_id)
-
-                file_path = os.path.join('temp', user_id, '')
-                os.makedirs(os.path.dirname(file_path), exist_ok=True)
-                z.extract(name, path=file_path)
-                os.replace(os.path.join(file_path, name), os.path.join(file_path + file))
-
-    if len(user_ids) < 1:
-        print('Unable to read any files from the zip. Please check the file and try again')
-    return user_ids
 
 
 def choose_val(hi_num: int, allow_zero: bool = False) -> int:

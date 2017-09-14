@@ -28,14 +28,16 @@ import requests
 # globals
 RUN_WITH_TESTS = False
 ONLY_RUN_TESTS = False
-
+NUM_REGEX = re.compile(r'[+-]?\d+\.\d+|\d+')
+#r'[+-]?\d+\.\d+|\d+'
+#r'[-+]?\d+(\.\d+)?'
 
 class TestSkeleton:
     """
     An abstract skeleton to handle testing of a specific group of files
     """
 
-    def __init__(self, descriptor: str, automation_level: str, tests: list):
+    def __init__(self, descriptor: str, tests: list, automation_level: int = 0):
         """
         :param descriptor: The description of this TestSkeleton
         :param tests: A list of AssignmentTest objects. These will be run in the order that they are added.
@@ -48,20 +50,27 @@ class TestSkeleton:
     @classmethod
     def from_file(cls, filename):
         with open('skeletons/' + filename) as skeleton_file:
-            data = json.load(skeleton_file)
+            try:
+                data = json.load(skeleton_file)
+            except json.JSONDecodeError:
+                print('There is an error in the %s skeleton file. This skeleton will not be available' % filename)
+                return None
             try:
                 descriptor = data['descriptor']
                 tests = data['tests']
             except KeyError:
                 return None
             else:
+                automation_level = data.get('automation_level')
+                if automation_level is None:
+                    automation_level = 0
                 test_list = []
                 for json_dict in tests:
                     test = AssignmentTest.from_json_dict(tests[json_dict])
                     if test is not None:
                         test_list.append(test)
 
-                return TestSkeleton(descriptor, test_list)
+                return TestSkeleton(descriptor, test_list, automation_level)
 
     def run_tests(self) -> int:
         total_score = 0
@@ -79,7 +88,6 @@ class TestSkeleton:
         return total_score
 
 
-# TODO Create tests
 class AssignmentTest:
     """
     An abstract test to be run on an assignment submission
@@ -184,7 +192,11 @@ class AssignmentTest:
         command = self.command
         args = self.args
         filename = self.target_file
-        if self.ask_for_target:
+        if self.single_file and len(os.listdir(os.getcwd())) > 0:
+            filename = os.listdir(os.getcwd())[0]
+        elif len(os.listdir(os.getcwd())) == 1:
+            filename = os.listdir(os.getcwd()[0])
+        elif self.ask_for_target:
             filename = AssignmentTest.target_prompt(self.command)
         if not self.include_filetype:
             filename = os.path.splitext(filename)[0]
@@ -202,27 +214,29 @@ class AssignmentTest:
         Runs the command and matches the output to the output_match/regex. If neither are defined then this always returns true
         :return: Whether the output matched or not
         """
+        global NUM_REGEX
+
         result = self.run()
         if self.print_output:
             print('\t--OUTPUT--')
             print(result['stdout'])
             print('\t--END OUTPUT--')
-        if not any((self.output_match, self.output_regex)):
+        if not any((self.output_match, self.output_regex, self.numeric_match)):
             return True
 
         if self.numeric_match is not None:
             numeric_match = list(self.numeric_match)  # Clone the list
-            extracted_nums = []
-            for t in result['stdout'].split():
-                try:
-                    extracted_nums.append(float(t))
-                except ValueError:
-                    pass
-            if len(extracted_nums) == 0:
-                return False
+            extracted_nums = map(float, re.findall(NUM_REGEX, result['stdout']))
 
-            for num in numeric_match:
-                for number in extracted_nums:
+            for number in extracted_nums:
+                for num in numeric_match:
+                    if isinstance(num, str):
+                        numeric_match.remove(num)
+                        range_vals = list(map(float, re.findall(NUM_REGEX, num)))
+                        if len(range_vals) != 2:
+                            continue
+                        num = [range_vals[0] - range_vals[1], range_vals[0] + range_vals[1]]
+                        numeric_match.append(num)
                     if isinstance(num, list):
                         if num[0] <= number <= num[1]:
                             numeric_match.remove(num)
@@ -514,6 +528,10 @@ def main():
             name_dict[user_id] = user_data['name']
         print(str(user_data.get('name')) + '\t(%s)' % user_data.get('email'))
     print('----\n')
+
+    print('Require confirmation before submitting grades? (y or n)')
+    grade_conf = choose_bool()
+
     input('Press enter to begin grading\n')
     for cur_user_id in user_submission_dict:
         try:
@@ -530,23 +548,28 @@ def main():
 
         while True:
             print('\n--All tests completed--\nGrade for this assignment: %i' % score)
-            print('Choose an action:')
-            for count, action in enumerate(action_list, 1):
-                print('%i.\t%s' % (count, action))
-            action_choice = choose_val(len(action_list)) - 1
-            selected_action = action_list[action_choice]
-
-            if selected_action == 'Submit this grade':
+            if not grade_conf:
                 grader.grade_submission(course_id, assignment_id, cur_user_id, score)
                 print('Grade submitted')
                 break
-            elif selected_action == 'Modify this grade':
-                print('Enter a new grade for this submission:')
-                score = choose_val(1000, allow_zero=True)
-            elif selected_action == 'Skip this submission':
-                break
-            elif selected_action == 'Re-grade this submission':
-                score = selected_skeleton.run_tests()
+            else:
+                print('Choose an action:')
+                for count, action in enumerate(action_list, 1):
+                    print('%i.\t%s' % (count, action))
+                action_choice = choose_val(len(action_list)) - 1
+                selected_action = action_list[action_choice]
+
+                if selected_action == 'Submit this grade':
+                    grader.grade_submission(course_id, assignment_id, cur_user_id, score)
+                    print('Grade submitted')
+                    break
+                elif selected_action == 'Modify this grade':
+                    print('Enter a new grade for this submission:')
+                    score = choose_val(1000, allow_zero=True)
+                elif selected_action == 'Skip this submission':
+                    break
+                elif selected_action == 'Re-grade this submission':
+                    score = selected_skeleton.run_tests()
 
     print('done')
 

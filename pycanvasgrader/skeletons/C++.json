@@ -1,11 +1,22 @@
 {
-  "descriptor": "C++ high automation",
-  "automation_level": 3,
+  "descriptor": "Java high automation",
   "tests": {
     "compile_test": {
-      "command": "g++ -std=c++11",
-      "numeric_match": [[8.98,9],[9.98,10], 12],
+      "command": "C:\\Program Files\\Java\\jdk1.8.0_92\\bin\\javac.exe",
+      "args": "%s",
+      "print_output": false,
+      "point_val": 25,
+      "output_match": "error",
+      "negate_match": true,
       "single_file": true
+    },
+    "run_test": {
+      "command": "java",
+      "args": "%s",
+      "numeric_match": ["2|0.1"],
+      "single_file": true,
+      "include_filetype": false,
+      "point_val": 75
     }
   }
 }

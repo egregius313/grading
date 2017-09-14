@@ -1,7 +1,5 @@
 {
   "descriptor": "Example Java skeleton",
-  "extensions": ".java",
-
   "tests": {
 
     "test_1": {

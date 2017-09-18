@@ -9,7 +9,6 @@ REQUIRED File structure:
   access.token
   pycanvasgrader.py
 
-  TODO test temp directory deletion timing on Windows
   TODO implement skeleton creation wizard
   TODO test/implement visual grading (ask for grade after test runs)
 """
@@ -27,6 +26,10 @@ import py
 import requests
 
 # globals
+DISARM_ALL = False
+DISARM_MESSAGER = True
+DISARM_GRADER = False
+
 RUN_WITH_TESTS = False
 ONLY_RUN_TESTS = False
 NUM_REGEX = re.compile(r'[+-]?\d+\.\d+|\d+')
@@ -74,7 +77,7 @@ class TestSkeleton:
 
                 return TestSkeleton(descriptor, test_list, automation_level)
 
-    def run_tests(self) -> int:
+    def run_tests(self, grader: PyCanvasGrader, user_id: int) -> int:
         total_score = 0
         for count, test in enumerate(self.tests):
             print('\n--Running test %i--' % (count + 1))
@@ -86,6 +89,15 @@ class TestSkeleton:
                 else:
                     print('--Subtracting %i points--' % abs(test.point_val))
                 total_score += test.point_val
+            elif test.fail_notif:
+                try:
+                    body = test.fail_notif['body']
+                except ValueError:
+                    pass
+                else:
+                    subject = test.fail_notif.get('subject')
+                    grader.message_user(user_id, body, subject)
+
             print('--Current score: %i--' % total_score)
         return total_score
 
@@ -99,7 +111,7 @@ class AssignmentTest:
     def __init__(self, command: str, args: list = None, print_file: bool = False, single_file: bool = False, target_file: str = None,
                  ask_for_target: bool = False, include_filetype: bool = True, print_output: bool = True,
                  output_match: str = None, output_regex: str = None, numeric_match: list = None,
-                 negate_match: bool = False, exact_match: bool = False, timeout: int = None, point_val: int = 0):
+                 negate_match: bool = False, exact_match: bool = False, timeout: int = None, fail_notif: dict = None, point_val: int = 0):
         """
         :param command: The command to be run.
         :param args: List of arguments to pass to the command. Use %s to denote a file name
@@ -116,6 +128,7 @@ class AssignmentTest:
         :param negate_match: Whether to negate the result of checking output_match and output_regex
         :param exact_match: Whether the naive string match (output_match) should be an exact check or a substring check
         :param timeout: Time, in seconds, that this Command should run for before timing out
+        :param fail_notif: Message to be sent to user when test fails
         :param point_val: Amount of points that a successful match is worth (Can be negative)
         """
         self.command = command
@@ -135,6 +148,7 @@ class AssignmentTest:
         self.exact_match = exact_match
         self.print_output = print_output
         self.timeout = timeout
+        self.fail_notif = fail_notif
         self.point_val = point_val
 
     @classmethod
@@ -157,13 +171,14 @@ class AssignmentTest:
             negate_match = json_dict.get('negate_match')
             exact_match = json_dict.get('exact_match')
             timeout = json_dict.get('timeout')
+            fail_notif = json_dict.get('fail_notification')
             point_val = json_dict.get('point_val')
 
             vars_dict = {'command': command, 'args': args, 'print_file': print_file, 'single_file': single_file, 'target_file': target_file,
                          'ask_for_target': ask_for_target, 'include_filetype': include_filetype,
                          'print_output': print_output, 'output_match': output_match, 'output_regex': output_regex,
                          'numeric_match': numeric_match, 'negate_match': negate_match, 'exact_match': exact_match,
-                         'timeout': timeout, 'point_val': point_val}
+                         'timeout': timeout, 'fail_notif': fail_notif, 'point_val': point_val}
             args_dict = {}
             for var_name, val in vars_dict.items():
                 if val is not None:
@@ -391,13 +406,19 @@ class PyCanvasGrader:
         return json.loads(response.text)
 
     def grade_submission(self, course_id, assignment_id, user_id, grade):
+        global DISARM_ALL, DISARM_GRADER
         url = 'https://sit.instructure.com/api/v1/courses/%i/assignments/%i/submissions/%i/?submission[posted_grade]=%i' \
               % (course_id, assignment_id, user_id, grade)
 
-        response = self.session.put(url)
-        return json.loads(response.text)
+        if DISARM_ALL or DISARM_GRADER:
+            print('Dummy: Grade submitted')
+            return 'dummy success'
+        else:
+            response = self.session.put(url)
+            return json.loads(response.text)
 
     def message_user(self, recipient_id: int, body: str, subject: str = None):
+        global DISARM_ALL, DISARM_MESSAGER
         url = 'https://sit.instructure.com/api/v1/conversations/'
 
         data = {
@@ -406,8 +427,12 @@ class PyCanvasGrader:
             'subject': subject
         }
 
-        response = self.session.post(url, data)
-        return json.loads(response.text)
+        if DISARM_ALL or DISARM_MESSAGER:
+            print('Dummy: user messaged')
+            return 'dummy success'
+        else:
+            response = self.session.post(url, data)
+            return json.loads(response.text)
 
 
 def choose_val(hi_num: int, allow_zero: bool = False) -> int:
@@ -566,7 +591,7 @@ def main():
             print('Could not access files for user "%i". Skipping' % cur_user_id)
             continue
         print('--Grading user "%s"--' % name_dict.get(cur_user_id))
-        score = selected_skeleton.run_tests()
+        score = selected_skeleton.run_tests(grader, cur_user_id)
 
         if score < 0:
             score = 0

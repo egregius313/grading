@@ -17,7 +17,7 @@
 
       "fail_notification": {
         "subject": "HW1c compilation failed",
-        "body": "This is an automated message to inform you that compilation of your submission for HW1chas failed\nPlease resbumit this assigment or your grade will remain a 0."
+        "body": "This is an automated message to inform you that compilation of your submission for HW1c has failed\nPlease resbumit this assigment or your grade will remain a 0."
       }
     },
     "test_2": {

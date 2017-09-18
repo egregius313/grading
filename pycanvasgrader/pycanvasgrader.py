@@ -20,6 +20,7 @@ import os
 import shutil
 import re
 import subprocess
+import sys
 
 # 3rd-party
 import py
@@ -29,8 +30,9 @@ import requests
 RUN_WITH_TESTS = False
 ONLY_RUN_TESTS = False
 NUM_REGEX = re.compile(r'[+-]?\d+\.\d+|\d+')
-#r'[+-]?\d+\.\d+|\d+'
-#r'[-+]?\d+(\.\d+)?'
+# r'[+-]?\d+\.\d+|\d+'
+# r'[-+]?\d+(\.\d+)?'
+
 
 class TestSkeleton:
     """
@@ -94,13 +96,14 @@ class AssignmentTest:
     TODO 'sequential' command requirement
     """
 
-    def __init__(self, command: str, args: str = None, single_file: bool = False, target_file: str = None,
+    def __init__(self, command: str, args: list = None, print_file: bool = False, single_file: bool = False, target_file: str = None,
                  ask_for_target: bool = False, include_filetype: bool = True, print_output: bool = True,
                  output_match: str = None, output_regex: str = None, numeric_match: list = None,
                  negate_match: bool = False, exact_match: bool = False, timeout: int = None, point_val: int = 0):
         """
         :param command: The command to be run.
-        :param args: The arguments to pass to the command. Use %s to denote a file name
+        :param args: List of arguments to pass to the command. Use %s to denote a file name
+        :param print_file: Whether to print the contents of the target_file being tested (Does nothing if no file is selected)
         :param single_file: Whether to assume the assignment is a single file and use the first file found as %s
         :param target_file: The file to replace %s with
         :param ask_for_target: Whether to prompt for a file in the current directory. Overrides file_target
@@ -117,6 +120,7 @@ class AssignmentTest:
         """
         self.command = command
         self.args = args
+        self.print_file = print_file
         self.single_file = single_file
         self.target_file = target_file
         self.ask_for_target = ask_for_target
@@ -141,6 +145,7 @@ class AssignmentTest:
             return None
         else:
             args = json_dict.get('args')
+            print_file = json_dict.get('print_file')
             single_file = json_dict.get('single_file')
             target_file = json_dict.get('target_file')
             ask_for_target = json_dict.get('ask_for_target')
@@ -154,7 +159,7 @@ class AssignmentTest:
             timeout = json_dict.get('timeout')
             point_val = json_dict.get('point_val')
 
-            vars_dict = {'command': command, 'args': args, 'single_file': single_file, 'target_file': target_file,
+            vars_dict = {'command': command, 'args': args, 'print_file': print_file, 'single_file': single_file, 'target_file': target_file,
                          'ask_for_target': ask_for_target, 'include_filetype': include_filetype,
                          'print_output': print_output, 'output_match': output_match, 'output_regex': output_regex,
                          'numeric_match': numeric_match, 'negate_match': negate_match, 'exact_match': exact_match,
@@ -192,21 +197,30 @@ class AssignmentTest:
         command = self.command
         args = self.args
         filename = self.target_file
-        if self.single_file and len(os.listdir(os.getcwd())) > 0:
-            filename = os.listdir(os.getcwd())[0]
-        elif len(os.listdir(os.getcwd())) == 1:
-            filename = os.listdir(os.getcwd()[0])
-        elif self.ask_for_target:
-            filename = AssignmentTest.target_prompt(self.command)
-        if not self.include_filetype:
+        if filename is None:
+            if self.single_file and len(os.listdir(os.getcwd())) > 0:
+                filename = os.listdir(os.getcwd())[0]
+            elif len(os.listdir(os.getcwd())) == 1:
+                filename = os.listdir(os.getcwd())[0]
+            elif self.ask_for_target:
+                filename = AssignmentTest.target_prompt(self.command)
+
+        if not self.include_filetype and filename is not None:
             filename = os.path.splitext(filename)[0]
         if filename is not None:
+            if self.print_file:
+                print('--FILE--')
+                with open(filename, "r") as f:
+                    shutil.copyfileobj(f, sys.stdout)
+                print('--END FILE--')
             command = self.command.replace('%s', filename)
-            args = self.args.replace('%s', filename)
-        elif '%s' in self.command + '|' + self.args:
-            print('No filename given, but this command contains filename wildcards (%s). This command will probably fail')
+            if args is not None:
+                args = [arg.replace('%s', filename) for arg in args]
 
-        proc = subprocess.run([command, args], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=self.timeout, encoding='UTF-8', shell=True)
+        if args is not None:
+            proc = subprocess.run([command] + args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=self.timeout, encoding='UTF-8', shell=True)
+        else:
+            proc = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=self.timeout, encoding='UTF-8', shell=True)
         return {'returncode': proc.returncode, 'stdout': proc.stdout, 'stderr': proc.stderr}
 
     def run_and_match(self) -> bool:

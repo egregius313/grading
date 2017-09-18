@@ -397,6 +397,18 @@ class PyCanvasGrader:
         response = self.session.put(url)
         return json.loads(response.text)
 
+    def message_user(self, recipient_id: int, body: str, subject: str = None):
+        url = 'https://sit.instructure.com/api/v1/conversations/'
+
+        data = {
+            'recipients[]': recipient_id,
+            'body': body,
+            'subject': subject
+        }
+
+        response = self.session.post(url, data)
+        return json.loads(response.text)
+
 
 def choose_val(hi_num: int, allow_zero: bool = False) -> int:
     val = 'none'

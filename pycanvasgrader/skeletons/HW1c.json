@@ -5,19 +5,34 @@
     "test_1": {
       "command": "g++",
       "args": ["%s", "-o", "out"],
+
       "single_file": true,
       "print_output": true,
       "print_file": true,
+
       "output_match": "error",
       "negate_match": true,
-      "point_val": 25
+
+      "point_val": 25,
+
+      "fail_notification": {
+        "subject": "HW1c compilation failed",
+        "body": "This is an automated message to inform you that compilation of your submission for HW1chas failed\nPlease resbumit this assigment or your grade will remain a 0."
+      }
     },
     "test_2": {
       "command": "out.exe",
       "print_output": true,
-      "output_match": "5050\n5050\n",
+
+      "output_match": "5050\n5050",
       "exact_match": false,
-      "point_val": 75
+
+      "point_val": 75,
+
+      "fail_notification": {
+        "subject": "HW1c testing failed",
+        "body": "This is an automated message to inform you that testing of your submission for HW1c has failed.\nCheck to make sure your output conforms exactly to what is expected on Canvas."
+      }
     }
   }
 }

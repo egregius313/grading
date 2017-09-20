@@ -26,7 +26,7 @@ import py
 import requests
 
 # globals
-DISARM_ALL = False
+DISARM_ALL = True
 DISARM_MESSAGER = True
 DISARM_GRADER = False
 
@@ -37,20 +37,156 @@ NUM_REGEX = re.compile(r'[+-]?\d+\.\d+|\d+')
 # r'[-+]?\d+(\.\d+)?'
 
 
+class PyCanvasGrader:
+    """
+    A PyCanvasGrader object; responsible for communicating with the Canvas API
+    """
+
+    def __init__(self):
+        self.token = self.authenticate()
+        if self.token == 'none':
+            print('Unable to retrieve OAuth2 token')
+            exit()
+
+        self.session = requests.Session()
+        self.session.headers.update({'Authorization': 'Bearer ' + self.token})
+
+    @staticmethod
+    def authenticate() -> str:
+        """
+        Responsible for retrieving the OAuth2 token for the session.
+        :return: The OAuth2 token
+
+        TODO Talk about "proper" OAuth2 authentication
+        """
+
+        with open('access.token', 'r', encoding='UTF-8') as access_file:
+            for line in access_file:
+                token = line.strip()
+                if isinstance(token, str) and len(token) > 2:
+                    return token
+        return 'none'
+
+    def close(self):
+        self.session.close()
+
+    def courses(self, enrollment_type: str = None) -> list:
+        """
+        :param enrollment_type: (Optional) teacher, student, ta, observer, designer
+        :return: A list of the user's courses as dictionaries, optionally filtered by enrollment_type
+        """
+        url = 'https://sit.instructure.com/api/v1/courses'
+        if enrollment_type is not None:
+            url += '?enrollment_type=' + enrollment_type
+
+        response = self.session.get(url)
+        return json.loads(response.text)
+
+    def assignments(self, course_id: int, ungraded: bool = True) -> list:
+        """
+        :param course_id: Course ID to filter by
+        :param ungraded: Whether to filter assignments by only those that have ungraded work. Default: True
+        :return: A list of the course's assignments
+        """
+        url = 'https://sit.instructure.com/api/v1/courses/' + str(course_id) + '/assignments'
+        if ungraded:
+            url += '?bucket=ungraded'
+
+        response = self.session.get(url)
+        return json.loads(response.text)
+
+    def submissions(self, course_id: int, assignment_id: int) -> list:
+        """
+        :param course_id: The ID of the course containing the assignment
+        :param assignment_id: The ID of the assignment
+        :return: A list of the assignment's submissions
+        """
+        url = 'https://sit.instructure.com/api/v1/courses/' + str(course_id) + '/assignments/' + str(assignment_id) + '/submissions'
+
+        response = self.session.get(url)
+        return json.loads(response.text)
+
+    def download_submission(self, submission: dict, filepath: str) -> bool:
+        """
+        Attempts to download the attachments for a given submission into the requested directory. Creates the directory if it does not exist.
+        :param submission: The submission dictionary
+        :param filepath: the path where the submission attachments will be placed
+        :return: True if the request succeeded, False otherwise
+        """
+        try:
+            user_id = submission['user_id']
+            attachments = submission['attachments']
+        except ValueError:
+            return False
+
+        for attachment in attachments:
+            try:
+                url = attachment['url']
+                filename = attachment['filename']
+            except ValueError:
+                return False
+
+            os.makedirs(os.path.join('temp', str(user_id)), exist_ok=True)
+            r = self.session.get(url, stream=True)
+            with open(os.path.join(filepath, filename), 'wb') as f:
+                for chunk in r.iter_content(chunk_size=1024):
+                    if chunk:
+                        f.write(chunk)
+        return True
+
+    def user(self, course_id: int, user_id: int) -> dict:
+        """
+        :param course_id: The class to search
+        :param user_id: The ID of the user
+        :return: A dictionary with the user's information
+        """
+        url = 'https://sit.instructure.com/api/v1/courses/%i/users/%i' % (course_id, user_id)
+
+        response = self.session.get(url)
+        return json.loads(response.text)
+
+    def grade_submission(self, course_id, assignment_id, user_id, grade):
+        global DISARM_ALL, DISARM_GRADER
+        url = 'https://sit.instructure.com/api/v1/courses/%i/assignments/%i/submissions/%i/?submission[posted_grade]=%i' \
+              % (course_id, assignment_id, user_id, grade)
+
+        if DISARM_ALL or DISARM_GRADER:
+            print('Grader disarmed; grade not actually submitted')
+            return 'dummy success'
+        else:
+            response = self.session.put(url)
+            return json.loads(response.text)
+
+    def message_user(self, recipient_id: int, body: str, subject: str = None):
+        global DISARM_ALL, DISARM_MESSAGER
+        url = 'https://sit.instructure.com/api/v1/conversations/'
+
+        data = {
+            'recipients[]': recipient_id,
+            'body': body,
+            'subject': subject
+        }
+
+        if DISARM_ALL or DISARM_MESSAGER:
+            print('Messenger disarmed; user was not messaged')
+            return 'dummy success'
+        else:
+            response = self.session.post(url, data)
+            return json.loads(response.text)
+
+
 class TestSkeleton:
     """
     An abstract skeleton to handle testing of a specific group of files
     """
 
-    def __init__(self, descriptor: str, tests: list, automation_level: int = 0):
+    def __init__(self, descriptor: str, tests: list):
         """
         :param descriptor: The description of this TestSkeleton
         :param tests: A list of AssignmentTest objects. These will be run in the order that they are added.
-        :param automation_level: How many questions the grader should ask
         """
         self.descriptor = descriptor
         self.tests = tests
-        self.automation_level = automation_level
 
     @classmethod
     def from_file(cls, filename):
@@ -66,16 +202,13 @@ class TestSkeleton:
             except KeyError:
                 return None
             else:
-                automation_level = data.get('automation_level')
-                if automation_level is None:
-                    automation_level = 0
                 test_list = []
                 for json_dict in tests:
                     test = AssignmentTest.from_json_dict(tests[json_dict])
                     if test is not None:
                         test_list.append(test)
 
-                return TestSkeleton(descriptor, test_list, automation_level)
+                return TestSkeleton(descriptor, test_list)
 
     def run_tests(self, grader: PyCanvasGrader, user_id: int) -> int:
         total_score = 0
@@ -295,144 +428,6 @@ class AssignmentTest:
                 return True
 
         return self.negate_match
-
-
-class PyCanvasGrader:
-    """
-    A PyCanvasGrader object; responsible for communicating with the Canvas API
-    """
-
-    def __init__(self):
-        self.token = self.authenticate()
-        if self.token == 'none':
-            print('Unable to retrieve OAuth2 token')
-            exit()
-
-        self.session = requests.Session()
-        self.session.headers.update({'Authorization': 'Bearer ' + self.token})
-
-    @staticmethod
-    def authenticate() -> str:
-        """
-        Responsible for retrieving the OAuth2 token for the session.
-        :return: The OAuth2 token
-
-        TODO Talk about "proper" OAuth2 authentication
-        """
-
-        with open('access.token', 'r', encoding='UTF-8') as access_file:
-            for line in access_file:
-                token = line.strip()
-                if isinstance(token, str) and len(token) > 2:
-                    return token
-        return 'none'
-
-    def close(self):
-        self.session.close()
-
-    def courses(self, enrollment_type: str = None) -> list:
-        """
-        :param enrollment_type: (Optional) teacher, student, ta, observer, designer
-        :return: A list of the user's courses as dictionaries, optionally filtered by enrollment_type
-        """
-        url = 'https://sit.instructure.com/api/v1/courses'
-        if enrollment_type is not None:
-            url += '?enrollment_type=' + enrollment_type
-
-        response = self.session.get(url)
-        return json.loads(response.text)
-
-    def assignments(self, course_id: int, ungraded: bool = True) -> list:
-        """
-        :param course_id: Course ID to filter by
-        :param ungraded: Whether to filter assignments by only those that have ungraded work. Default: True
-        :return: A list of the course's assignments
-        """
-        url = 'https://sit.instructure.com/api/v1/courses/' + str(course_id) + '/assignments'
-        if ungraded:
-            url += '?bucket=ungraded'
-
-        response = self.session.get(url)
-        return json.loads(response.text)
-
-    def submissions(self, course_id: int, assignment_id: int) -> list:
-        """
-        :param course_id: The ID of the course containing the assignment
-        :param assignment_id: The ID of the assignment
-        :return: A list of the assignment's submissions
-        """
-        url = 'https://sit.instructure.com/api/v1/courses/' + str(course_id) + '/assignments/' + str(assignment_id) + '/submissions'
-
-        response = self.session.get(url)
-        return json.loads(response.text)
-
-    def download_submission(self, submission: dict, filepath: str) -> bool:
-        """
-        Attempts to download the attachments for a given submission into the requested directory. Creates the directory if it does not exist.
-        :param submission: The submission dictionary
-        :param filepath: the path where the submission attachments will be placed
-        :return: True if the request succeeded, False otherwise
-        """
-        try:
-            user_id = submission['user_id']
-            attachments = submission['attachments']
-        except ValueError:
-            return False
-
-        for attachment in attachments:
-            try:
-                url = attachment['url']
-                filename = attachment['filename']
-            except ValueError:
-                return False
-
-            os.makedirs(os.path.join('temp', str(user_id)), exist_ok=True)
-            r = self.session.get(url, stream=True)
-            with open(os.path.join(filepath, filename), 'wb') as f:
-                for chunk in r.iter_content(chunk_size=1024):
-                    if chunk:
-                        f.write(chunk)
-        return True
-
-    def user(self, course_id: int, user_id: int) -> dict:
-        """
-        :param course_id: The class to search
-        :param user_id: The ID of the user
-        :return: A dictionary with the user's information
-        """
-        url = 'https://sit.instructure.com/api/v1/courses/%i/users/%i' % (course_id, user_id)
-
-        response = self.session.get(url)
-        return json.loads(response.text)
-
-    def grade_submission(self, course_id, assignment_id, user_id, grade):
-        global DISARM_ALL, DISARM_GRADER
-        url = 'https://sit.instructure.com/api/v1/courses/%i/assignments/%i/submissions/%i/?submission[posted_grade]=%i' \
-              % (course_id, assignment_id, user_id, grade)
-
-        if DISARM_ALL or DISARM_GRADER:
-            print('Dummy: Grade submitted')
-            return 'dummy success'
-        else:
-            response = self.session.put(url)
-            return json.loads(response.text)
-
-    def message_user(self, recipient_id: int, body: str, subject: str = None):
-        global DISARM_ALL, DISARM_MESSAGER
-        url = 'https://sit.instructure.com/api/v1/conversations/'
-
-        data = {
-            'recipients[]': recipient_id,
-            'body': body,
-            'subject': subject
-        }
-
-        if DISARM_ALL or DISARM_MESSAGER:
-            print('Dummy: user messaged')
-            return 'dummy success'
-        else:
-            response = self.session.post(url, data)
-            return json.loads(response.text)
 
 
 def choose_val(hi_num: int, allow_zero: bool = False) -> int:

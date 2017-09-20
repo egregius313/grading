@@ -8,7 +8,7 @@
 
       "single_file": true,
       "print_output": true,
-      "print_file": true,
+      "print_file": false,
 
       "output_match": "error",
       "negate_match": true,
@@ -24,7 +24,7 @@
       "command": "out.exe",
       "print_output": true,
 
-      "output_match": "5050\n5050",
+      "output_match": "5050\n5050\n",
       "exact_match": false,
 
       "point_val": 75,

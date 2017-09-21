@@ -136,6 +136,18 @@
 </div>
 <div class="container">
     <div class="item">
+        "point_val" - Integer<span class="opt">(Optional)</span> Default: <span class="none">none</span>
+    </div>
+    <div class="desc">
+        A point value to be added to the student's total if the test passes. Can be negative.
+    </div>
+    <h4>Example:</h4>
+    <div class="example">
+        "point_val": 25
+    </div>
+</div>
+<div class="container">
+    <div class="item">
         "print_file" - Boolean <span class="opt">(Optional)</span> Default: <span class="false">false</span>
     </div>
     <div class="desc">
@@ -292,6 +304,24 @@
     <h4>Example:</h4>
     <div class="example">
         "timeout": 5
+    </div>
+</div>
+<div class="container">
+    <div class="item">
+        "fail_notif" - Dictionary <span class="opt">(Optional)</span> Default: <span class="none">none</span>
+    </div>
+    <div class="desc">
+        This message will be sent to the student if the fest fails.<br/>
+        Consists of a dictionary containing a "body" string and an optional "subject" string.
+    </div>
+    <h4>Example:</h4>
+    <div class="example-multiline">
+        <div class="example">
+            "fail_notif": {<br/>
+              &nbsp;&nbsp;"subject": "Test failed"<br/>
+              &nbsp;&nbsp;"body": "Your submission failed a test!\nYou may re-submit this assignment"<br/>
+            }
+        </div>
     </div>
 </div>
 

@@ -1,7 +1,6 @@
 {
   "descriptor": "HW1c Grader",
   "tests": {
-
     "test_1": {
       "command": "g++",
       "args": ["%s", "-o", "out"],

@@ -26,8 +26,8 @@ import py
 import requests
 
 # globals
-DISARM_ALL = True
-DISARM_MESSAGER = True
+DISARM_ALL = False
+DISARM_MESSAGER = False
 DISARM_GRADER = False
 
 RUN_WITH_TESTS = False
@@ -151,7 +151,7 @@ class PyCanvasGrader:
               % (course_id, assignment_id, user_id, grade)
 
         if DISARM_ALL or DISARM_GRADER:
-            print('Grader disarmed; grade not actually submitted')
+            print('Grader disarmed; grade will not actually be submitted')
             return 'dummy success'
         else:
             response = self.session.put(url)
@@ -168,7 +168,7 @@ class PyCanvasGrader:
         }
 
         if DISARM_ALL or DISARM_MESSAGER:
-            print('Messenger disarmed; user was not messaged')
+            print('Messenger disarmed; user wil not actually be messaged')
             return 'dummy success'
         else:
             response = self.session.post(url, data)
@@ -180,13 +180,15 @@ class TestSkeleton:
     An abstract skeleton to handle testing of a specific group of files
     """
 
-    def __init__(self, descriptor: str, tests: list):
+    def __init__(self, descriptor: str, tests: list, disarm: bool = False):
         """
         :param descriptor: The description of this TestSkeleton
         :param tests: A list of AssignmentTest objects. These will be run in the order that they are added.
+        :param disarm: Whether to actually submit grades/send messages
         """
         self.descriptor = descriptor
         self.tests = tests
+        self.disarm = disarm
 
     @classmethod
     def from_file(cls, filename):
@@ -202,15 +204,21 @@ class TestSkeleton:
             except KeyError:
                 return None
             else:
+                disarm = data.get('disarm')
+                if disarm is None:
+                    disarm = False
                 test_list = []
                 for json_dict in tests:
                     test = AssignmentTest.from_json_dict(tests[json_dict])
                     if test is not None:
                         test_list.append(test)
 
-                return TestSkeleton(descriptor, test_list)
+                return TestSkeleton(descriptor, test_list, disarm)
 
     def run_tests(self, grader: PyCanvasGrader, user_id: int) -> int:
+        global DISARM_ALL
+        DISARM_ALL = self.disarm
+
         total_score = 0
         for count, test in enumerate(self.tests):
             print('\n--Running test %i--' % (count + 1))
@@ -273,7 +281,7 @@ class AssignmentTest:
         self.include_filetype = include_filetype
         self.output_match = output_match
         if output_regex is not None:
-            self.output_regex = re.compile(output_regex)
+            self.output_regex = re.compile(re.escape(output_regex))
         else:
             self.output_regex = None
         self.numeric_match = numeric_match
@@ -365,10 +373,14 @@ class AssignmentTest:
             if args is not None:
                 args = [arg.replace('%s', filename) for arg in args]
 
-        if args is not None:
-            proc = subprocess.run([command] + args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=self.timeout, encoding='UTF-8', shell=True)
-        else:
-            proc = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=self.timeout, encoding='UTF-8', shell=True)
+        try:
+
+            if args is not None:
+                proc = subprocess.run([command] + args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=self.timeout, encoding='UTF-8', shell=True)
+            else:
+                proc = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=self.timeout, encoding='UTF-8', shell=True)
+        except subprocess.TimeoutExpired:
+            return {'timeout': True}
         return {'returncode': proc.returncode, 'stdout': proc.stdout, 'stderr': proc.stderr}
 
     def run_and_match(self) -> bool:
@@ -379,6 +391,10 @@ class AssignmentTest:
         global NUM_REGEX
 
         result = self.run()
+
+        if result.get('timeout'):
+            return False
+
         if self.print_output:
             print('\t--OUTPUT--')
             print(result['stdout'])

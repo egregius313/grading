@@ -32,7 +32,7 @@ DISARM_GRADER = False
 
 RUN_WITH_TESTS = False
 ONLY_RUN_TESTS = False
-NUM_REGEX = re.compile(r'[+-]?\d+\.\d+|\d+')
+NUM_REGEX = re.compile(r'-?\d+\.\d+|-?\d+')
 # r'[+-]?\d+\.\d+|\d+'
 # r'[-+]?\d+(\.\d+)?'
 
@@ -230,14 +230,16 @@ class TestSkeleton:
                 else:
                     print('--Subtracting %i points--' % abs(test.point_val))
                 total_score += test.point_val
-            elif test.fail_notif:
-                try:
-                    body = test.fail_notif['body']
-                except ValueError:
-                    pass
-                else:
-                    subject = test.fail_notif.get('subject')
-                    grader.message_user(user_id, body, subject)
+            else:
+                print('--Test failed--')
+                if test.fail_notif:
+                    try:
+                        body = test.fail_notif['body']
+                    except ValueError:
+                        pass
+                    else:
+                        subject = test.fail_notif.get('subject')
+                        grader.message_user(user_id, body, subject)
 
             print('--Current score: %i--' % total_score)
         return total_score
@@ -249,13 +251,14 @@ class AssignmentTest:
     TODO 'sequential' command requirement
     """
 
-    def __init__(self, command: str, args: list = None, print_file: bool = False, single_file: bool = False, target_file: str = None,
+    def __init__(self, command: str, args: list = None, input_str: str = None, print_file: bool = False, single_file: bool = False, target_file: str = None,
                  ask_for_target: bool = False, include_filetype: bool = True, print_output: bool = True,
                  output_match: str = None, output_regex: str = None, numeric_match: list = None,
                  negate_match: bool = False, exact_match: bool = False, timeout: int = None, fail_notif: dict = None, point_val: int = 0):
         """
         :param command: The command to be run.
         :param args: List of arguments to pass to the command. Use %s to denote a file name
+        :param input_str: String to send to stdin
         :param print_file: Whether to print the contents of the target_file being tested (Does nothing if no file is selected)
         :param single_file: Whether to assume the assignment is a single file and use the first file found as %s
         :param target_file: The file to replace %s with
@@ -274,6 +277,7 @@ class AssignmentTest:
         """
         self.command = command
         self.args = args
+        self.input_str = input_str
         self.print_file = print_file
         self.single_file = single_file
         self.target_file = target_file
@@ -300,6 +304,7 @@ class AssignmentTest:
             return None
         else:
             args = json_dict.get('args')
+            input_str = json_dict.get('input')
             print_file = json_dict.get('print_file')
             single_file = json_dict.get('single_file')
             target_file = json_dict.get('target_file')
@@ -315,7 +320,7 @@ class AssignmentTest:
             fail_notif = json_dict.get('fail_notification')
             point_val = json_dict.get('point_val')
 
-            vars_dict = {'command': command, 'args': args, 'print_file': print_file, 'single_file': single_file, 'target_file': target_file,
+            vars_dict = {'command': command, 'args': args, 'input_str': input_str, 'print_file': print_file, 'single_file': single_file, 'target_file': target_file,
                          'ask_for_target': ask_for_target, 'include_filetype': include_filetype,
                          'print_output': print_output, 'output_match': output_match, 'output_regex': output_regex,
                          'numeric_match': numeric_match, 'negate_match': negate_match, 'exact_match': exact_match,
@@ -374,11 +379,13 @@ class AssignmentTest:
                 args = [arg.replace('%s', filename) for arg in args]
 
         try:
-
-            if args is not None:
-                proc = subprocess.run([command] + args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=self.timeout, encoding='UTF-8', shell=True)
+            if args:
+                command_to_send = [command] + args
             else:
-                proc = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=self.timeout, encoding='UTF-8', shell=True)
+                command_to_send = command
+
+            proc = subprocess.run(command_to_send, input=self.input, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=self.timeout, encoding='UTF-8', shell=True)
+
         except subprocess.TimeoutExpired:
             return {'timeout': True}
         return {'returncode': proc.returncode, 'stdout': proc.stdout, 'stderr': proc.stderr}
@@ -487,8 +494,9 @@ def restart_program(grader: PyCanvasGrader):
 def init_tempdir():
         try:
             if os.path.exists('temp'):
+                if os.path.exists('old-temp'):
+                    shutil.rmtree(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'old-temp'))
                 os.rename('temp', 'old-temp')
-                shutil.rmtree(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'old-temp'))
             os.makedirs('temp', exist_ok=True)
         except BaseException:
             print('An error occurred while initializing the "temp" directory. Please delete/create the directory manually and re-run the program')
@@ -631,9 +639,9 @@ def main():
                 elif selected_action == 'Skip this submission':
                     break
                 elif selected_action == 'Re-grade this submission':
-                    score = selected_skeleton.run_tests()
+                    score = selected_skeleton.run_tests(grader, cur_user_id)
 
-    print('done')
+    print('Finished grading all submissions for this assignment')
 
 
 if __name__ == '__main__':

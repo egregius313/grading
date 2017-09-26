@@ -136,6 +136,18 @@
 </div>
 <div class="container">
     <div class="item">
+        "input" - String <span class="opt">(Optional)</span> Default: <span class="none">none</span>
+    </div>
+    <div class="desc">
+        An input string to be passed to stdin for this test.
+    </div>
+    <h4>Example:</h4>
+    <div class="example">
+        "input": "25"
+    </div>
+</div>
+<div class="container">
+    <div class="item">
         "point_val" - Integer<span class="opt">(Optional)</span> Default: <span class="none">none</span>
     </div>
     <div class="desc">
@@ -210,7 +222,7 @@
 </div>
 <div class="container">
     <div class="item">
-        print_output - Boolean <span class="opt">(Optional)</span> Default: <span class="false">false</span>
+        "print_output" - Boolean <span class="opt">(Optional)</span> Default: <span class="false">false</span>
     </div>
     <div class="desc">
         Whether to print the output of this test's command into the console.
@@ -222,7 +234,7 @@
 </div>
 <div class="container">
     <div class="item">
-        output_match - String <span class="opt">(Optional)</span> Default: <span class="none">none</span>
+        "output_match" - String <span class="opt">(Optional)</span> Default: <span class="none">none</span>
     </div>
     <div class="desc">
         If "exact_match" is set, this string must exactly match the output of the command, or the test will fail.<br/>

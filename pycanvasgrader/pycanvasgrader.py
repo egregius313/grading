@@ -10,7 +10,7 @@ REQUIRED File structure:
   pycanvasgrader.py
 
   TODO implement skeleton creation wizard
-  TODO test/implement visual grading (ask for grade after test runs)
+  TODO test/implement visual grading
 """
 
 # built-ins

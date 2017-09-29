@@ -9,7 +9,6 @@ REQUIRED File structure:
   access.token
   pycanvasgrader.py
 
-  TODO implement skeleton creation wizard
   TODO test/implement visual grading (ask for grade after test runs)
 """
 

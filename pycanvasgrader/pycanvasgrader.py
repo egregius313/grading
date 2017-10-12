@@ -59,13 +59,15 @@ class PyCanvasGrader:
 
         TODO Talk about "proper" OAuth2 authentication
         """
-
-        with open('access.token', 'r', encoding='UTF-8') as access_file:
-            for line in access_file:
-                token = line.strip()
-                if isinstance(token, str) and len(token) > 2:
-                    return token
-        return 'none'
+        try:
+            with open('access.token', 'r', encoding='UTF-8') as access_file:
+                for line in access_file:
+                    token = line.strip()
+                    if isinstance(token, str) and len(token) > 2:
+                        return token
+        except FileNotFoundError:
+            print("Could not find an access.token file. You must place your Canvas OAuth token in a file named 'access.token', in this directory.")
+            exit(1)
 
     def close(self):
         self.session.close()

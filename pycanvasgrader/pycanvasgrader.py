@@ -386,7 +386,7 @@ class AssignmentTest:
             else:
                 command_to_send = command
 
-            proc = subprocess.run(command_to_send, input=self.input, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=self.timeout, encoding='UTF-8', shell=True)
+            proc = subprocess.run(command_to_send, input=self.input_str, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=self.timeout, encoding='UTF-8', shell=True)
 
         except subprocess.TimeoutExpired:
             return {'timeout': True}

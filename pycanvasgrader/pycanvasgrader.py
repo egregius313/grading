@@ -77,9 +77,9 @@ class PyCanvasGrader:
         :param enrollment_type: (Optional) teacher, student, ta, observer, designer
         :return: A list of the user's courses as dictionaries, optionally filtered by enrollment_type
         """
-        url = 'https://sit.instructure.com/api/v1/courses'
+        url = 'https://sit.instructure.com/api/v1/courses?per_page=100'
         if enrollment_type is not None:
-            url += '?enrollment_type=' + enrollment_type
+            url += '&enrollment_type=' + enrollment_type
 
         response = self.session.get(url)
         return json.loads(response.text)
@@ -90,9 +90,9 @@ class PyCanvasGrader:
         :param ungraded: Whether to filter assignments by only those that have ungraded work. Default: True
         :return: A list of the course's assignments
         """
-        url = 'https://sit.instructure.com/api/v1/courses/' + str(course_id) + '/assignments'
+        url = 'https://sit.instructure.com/api/v1/courses/' + str(course_id) + '/assignments?per_page=100'
         if ungraded:
-            url += '?bucket=ungraded'
+            url += '&bucket=ungraded'
 
         response = self.session.get(url)
         return json.loads(response.text)
@@ -103,7 +103,7 @@ class PyCanvasGrader:
         :param assignment_id: The ID of the assignment
         :return: A list of the assignment's submissions
         """
-        url = 'https://sit.instructure.com/api/v1/courses/' + str(course_id) + '/assignments/' + str(assignment_id) + '/submissions'
+        url = 'https://sit.instructure.com/api/v1/courses/' + str(course_id) + '/assignments/' + str(assignment_id) + '/submissions?per_page=100'
 
         response = self.session.get(url)
         return json.loads(response.text)
@@ -385,8 +385,11 @@ class AssignmentTest:
                 command_to_send = [command] + args
             else:
                 command_to_send = command
+            if sys.version_info[1] == 5:
+                proc = subprocess.run(command_to_send, input=self.input_str, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=self.timeout, shell=True)
 
-            proc = subprocess.run(command_to_send, input=self.input_str, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=self.timeout, encoding='UTF-8', shell=True)
+            else:
+                proc = subprocess.run(command_to_send, input=self.input_str, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=self.timeout, encoding='UTF-8', shell=True)
 
         except subprocess.TimeoutExpired:
             return {'timeout': True}
@@ -506,6 +509,11 @@ def init_tempdir():
 
 
 def main():
+    version_info = sys.version_info
+    if version_info[0] != 3 and version_info[1] < 5:
+        print("Python 3.5+ is required")
+        exit(1)
+
     init_tempdir()
     # Initialize grading session and fetch courses
     grader = PyCanvasGrader()
@@ -642,7 +650,11 @@ def main():
                     break
                 elif selected_action == 'Re-grade this submission':
                     score = selected_skeleton.run_tests(grader, cur_user_id)
-
+        try:
+            os.chdir(os.path.join('..', '..'))
+        except (WindowsError, OSError):
+            print("Unable to leave current directory")
+            exit(1)
     print('Finished grading all submissions for this assignment')
 
 

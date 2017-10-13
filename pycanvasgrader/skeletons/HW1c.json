@@ -1,5 +1,6 @@
 {
   "descriptor": "HW1c Grader",
+  "disarm": true,
   "tests": {
     "test_1": {
       "command": "g++",
@@ -12,12 +13,7 @@
       "output_match": "error",
       "negate_match": true,
 
-      "point_val": 25,
-
-      "fail_notification": {
-        "subject": "HW1c compilation failed",
-        "body": "This is an automated message to inform you that compilation of your submission for HW1c has failed\nPlease resbumit this assigment or your grade will remain a 0."
-      }
+      "point_val": 25
     },
     "test_2": {
       "command": "out.exe",
@@ -25,13 +21,8 @@
 
       "output_match": "5050\n5050\n",
       "exact_match": false,
-
-      "point_val": 75,
-
-      "fail_notification": {
-        "subject": "HW1c testing failed",
-        "body": "This is an automated message to inform you that testing of your submission for HW1c has failed.\nCheck to make sure your output conforms exactly to what is expected on Canvas."
-      }
+      "timeout": 5,
+      "point_val": 75
     }
   }
 }

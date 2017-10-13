@@ -1,4 +1,4 @@
-#!
+#!/usr/bin/env python3.6
 """
 Automates the grading of programming assignments on Canvas.
 MUST create an 'access.token' file in the same directory as this file with a valid Canvas OAuth2 token

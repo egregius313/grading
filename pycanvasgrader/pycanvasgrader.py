@@ -18,8 +18,9 @@ from enum import Enum
 from functools import partial
 import json
 import os
-import shutil
+import pathlib
 import re
+import shutil
 import subprocess
 import sys
 from typing import Callable, List, Sequence, TypeVar
@@ -250,22 +251,17 @@ class AssignmentTest:
 
     @classmethod
     def target_prompt(cls, command: str):
-        sub = 0
-        file_list = []
-        if len(os.listdir(os.getcwd())) < 1:
-            print('This directory is empty, unable to choose a file for "%s" command' % command)
+        path = pathlib.Path(os.getcwd())
+        files = [file for file in path.iterdir() if file.is_file()]
+
+        if not files:
+            print('This directory is empty, unable to choose a file for the "%s" command' % command)
             return None
 
-        print('Select a file for the "%s" command:' % command)
-        for count, file_name in enumerate(os.listdir(os.getcwd())):
-            if os.path.isdir(file_name):
-                sub += 1
-                continue
-            file_list.append(file_name)
-            print('%i.\t%s' % (count - sub + 1, file_name))  # The minus 1 is to hide the 0-based numbering
-
-        selection = choose_val(len(file_list)) - 1
-        return file_list[selection]
+        return choose(
+            files,
+            'Select a file for the "%s" command:' % command
+        ).name
 
     def run(self) -> dict:
         """

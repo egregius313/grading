@@ -21,9 +21,10 @@ import shutil
 import re
 import subprocess
 import sys
-from typing import Callable, Sequence, TypeVar
+from typing import Callable, List, Sequence, TypeVar
 
 # 3rd-party
+import attrs
 import py
 import requests
 import toml
@@ -40,7 +41,8 @@ NUM_REGEX = re.compile(r'-?\d+\.\d+|-?\d+')
 # r'[-+]?\d+(\.\d+)?'
 
 
-Enrollment = Enum('Enrollment', 'teacher student ta observer designer')  # TODO determine whether or not should be capitalized
+# TODO determine whether or not should be capitalized
+Enrollment = Enum('Enrollment', 'teacher student ta observer designer')
 T = TypeVar('T')
 
 
@@ -182,81 +184,6 @@ class PyCanvasGrader:
         else:
             response = self.session.post(url, data)
             return json.loads(response.text)
-
-
-class TestSkeleton:
-    """
-    An abstract skeleton to handle testing of a specific group of files
-    """
-
-    def __init__(self, descriptor: str, tests: list, disarm: bool = False):
-        """
-        :param descriptor: The description of this TestSkeleton
-        :param tests: A list of AssignmentTest objects. These will be run in the order that they are added.
-        :param disarm: Whether to actually submit grades/send messages
-        """
-        self.descriptor = descriptor
-        self.tests = tests
-        self.disarm = disarm
-
-    @classmethod
-    def from_file(cls, filename, dir='skeletons') -> 'TestSkeleton':
-        with open(dir + '/' + filename) as skeleton_file:
-            try:
-                if filename.endswith('.json'):
-                    data = json.load(skeleton_file)
-                elif filename.endswith('.toml'):
-                    data = toml.load(skeleton_file)
-                else:
-                    return None
-            except (json.JSONDecodeError, toml.TomlDecodeError):
-                print('There is an error in the %s skeleton file. This skeleton will not be available' % filename)
-                return None
-            try:
-                descriptor = data['descriptor']
-                tests = data['tests']
-            except KeyError:
-                return None
-            else:
-                disarm = data.get('disarm', False)
-                defaults = data.get('default', {})
-                test_list = []
-                for json_dict in tests:
-                    args = {**defaults, **test[json_dict]}
-                    test = AssignmentTest.from_json_dict(args)
-                    if test is not None:
-                        test_list.append(test)
-
-                return TestSkeleton(descriptor, test_list, disarm)
-
-    def run_tests(self, grader: PyCanvasGrader, user_id: int) -> int:
-        global DISARM_ALL
-        DISARM_ALL = self.disarm
-
-        total_score = 0
-        for count, test in enumerate(self.tests):
-            print('\n--Running test %i--' % (count + 1))
-            if test.run_and_match():
-                if test.point_val > 0:
-                    print('--Adding %i points--' % test.point_val)
-                elif test.point_val == 0:
-                    print('--No points set for this test--')
-                else:
-                    print('--Subtracting %i points--' % abs(test.point_val))
-                total_score += test.point_val
-            else:
-                print('--Test failed--')
-                if test.fail_notif:
-                    try:
-                        body = test.fail_notif['body']
-                    except ValueError:
-                        pass
-                    else:
-                        subject = test.fail_notif.get('subject')
-                        grader.message_user(user_id, body, subject)
-
-            print('--Current score: %i--' % total_score)
-        return total_score
 
 
 class AssignmentTest:
@@ -470,11 +397,82 @@ class AssignmentTest:
         return self.negate_match
 
 
+@attr.s
+class TestSkeleton:
+    """
+    An abstract skeleton to handle testing of a specific group of files
+    """
+
+    descriptor = attr.ib(type=str)
+    tests = attr.ib(type=List[AssignmentTest])  # Tests to run in the order that they are added.
+    disarm = attr.ib(default=False, type=bool)  # Whether to actually submit grades/send messages
+
+    @classmethod
+    def from_file(cls, filename, dir='skeletons') -> 'TestSkeleton':
+        with open(dir + '/' + filename) as skeleton_file:
+            try:
+                if filename.endswith('.json'):
+                    data = json.load(skeleton_file)
+                elif filename.endswith('.toml'):
+                    data = toml.load(skeleton_file)
+                else:
+                    return None
+            except (json.JSONDecodeError, toml.TomlDecodeError):
+                print('There is an error in the %s skeleton file. This skeleton will not be available' % filename)
+                return None
+            try:
+                descriptor = data['descriptor']
+                tests = data['tests']
+            except KeyError:
+                return None
+            else:
+                disarm = data.get('disarm', False)
+                defaults = data.get('default', {})
+                test_list = []
+                for json_dict in tests:
+                    args = {**defaults, **test[json_dict]}
+                    test = AssignmentTest.from_json_dict(args)
+                    if test is not None:
+                        test_list.append(test)
+
+                return TestSkeleton(descriptor, test_list, disarm)
+
+    def run_tests(self, grader: PyCanvasGrader, user_id: int) -> int:
+        global DISARM_ALL
+        DISARM_ALL = self.disarm
+
+        total_score = 0
+        for count, test in enumerate(self.tests):
+            print('\n--Running test %i--' % (count + 1))
+            if test.run_and_match():
+                if test.point_val > 0:
+                    print('--Adding %i points--' % test.point_val)
+                elif test.point_val == 0:
+                    print('--No points set for this test--')
+                else:
+                    print('--Subtracting %i points--' % abs(test.point_val))
+                total_score += test.point_val
+            else:
+                print('--Test failed--')
+                if test.fail_notif:
+                    try:
+                        body = test.fail_notif['body']
+                    except ValueError:
+                        pass
+                    else:
+                        subject = test.fail_notif.get('subject')
+                        grader.message_user(user_id, body, subject)
+
+            print('--Current score: %i--' % total_score)
+        return total_score
+
+
+
 def choose_val(hi_num: int, allow_zero: bool = False) -> int:
     val = 'none'
 
     while True:
-        if str.isdigit(val) and int(val) <= hi_num:
+        if val.isdigit() and int(val) <= hi_num:
             if (allow_zero and int(val) >= 0) or (not allow_zero and int(val) > 0):
                 break
         val = input()
@@ -566,16 +564,15 @@ def main():
         restart_program(grader)
 
     # Have user select course
-    print('Choose a course from the following list:')
-    for count, course in enumerate(course_list, 1):
-        print('%i.\t%s (%s)' % (count, course.get('name'), course.get('course_code')))
-    course_choice = choose_val(len(course_list)) - 1  # the minus 1 is to hide the 0-based numbering
-
+    course_choice_id = choose(
+        course_list,
+        'Choose a course from the following list:',
+        formatter=lambda course: '%s (%s)' % (course.get('name'), course.get('course_code'))
+    ).get('id')
     print('Show only ungraded assignments? (y or n):')
     ungraded = choose_bool()
-    course_id = course_list[course_choice].get('id')
-    assignment_list = grader.assignments(course_id, ungraded=ungraded)
-
+    assignment_list = grader.assignments(course_choice_id, ungraded=ungraded)
+    
     if len(assignment_list) < 1:
         input('No assignments were found. Press enter to restart')
         restart_program(grader)

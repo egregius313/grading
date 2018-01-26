@@ -15,17 +15,14 @@ REQUIRED File structure:
 
 # built-ins
 from enum import Enum
+from functools import partial
 import json
 import os
 import shutil
 import re
 import subprocess
 import sys
-<<<<<<< HEAD
 from typing import Callable, List, Sequence, TypeVar
-=======
-from typing import Callable, Sequence, TypeVar
->>>>>>> 7d75a01ccc5cfb4e319669c31c46df2e26422b7c
 
 # 3rd-party
 import attrs
@@ -45,11 +42,8 @@ NUM_REGEX = re.compile(r'-?\d+\.\d+|-?\d+')
 # r'[-+]?\d+(\.\d+)?'
 
 
-<<<<<<< HEAD
 # TODO determine whether or not should be capitalized
 Enrollment = Enum('Enrollment', 'teacher student ta observer designer')
-=======
->>>>>>> 7d75a01ccc5cfb4e319669c31c46df2e26422b7c
 T = TypeVar('T')
 
 
@@ -193,56 +187,56 @@ class PyCanvasGrader:
             return json.loads(response.text)
 
 
+def option(default=False):
+    """
+    Constructor for optional boolean configuartion attributes
+    """
+    return attr.ib(default=default, type=bool)
+
+
+@attr.s
 class AssignmentTest:
     """
     An abstract test to be run on an assignment submission
     TODO 'sequential' command requirement
-    """
 
-    def __init__(self, command: str, args: list = None, input_str: str = None, print_file: bool = False, single_file: bool = False, target_file: str = None,
-                 ask_for_target: bool = False, include_filetype: bool = True, print_output: bool = True,
-                 output_match: str = None, output_regex: str = None, numeric_match: list = None,
-                 negate_match: bool = False, exact_match: bool = False, timeout: int = None, fail_notif: dict = None, point_val: int = 0):
-        """
-        :param command: The command to be run.
-        :param args: List of arguments to pass to the command. Use %s to denote a file name
-        :param input_str: String to send to stdin
-        :param print_file: Whether to print the contents of the target_file being tested (Does nothing if no file is selected)
-        :param single_file: Whether to assume the assignment is a single file and use the first file found as %s
-        :param target_file: The file to replace %s with
-        :param ask_for_target: Whether to prompt for a file in the current directory. Overrides file_target
-        :param include_filetype: Whether to include the filetype in the %s substitution
-        :param print_output: Whether to visibly print the output
-        :param output_match: An exact string that the output should match. If this and output_regex are None, then this Command always 'matches'
-        :param output_regex: A regular expression that the string should match. Combines with output_match.
-        If this and output_match are None, then this Command always 'matches'
-        :param numeric_match: Enables numeric matching. This overrides string and regex matching
-        :param negate_match: Whether to negate the result of checking output_match and output_regex
-        :param exact_match: Whether the naive string match (output_match) should be an exact check or a substring check
-        :param timeout: Time, in seconds, that this Command should run for before timing out
-        :param fail_notif: Message to be sent to user when test fails
-        :param point_val: Amount of points that a successful match is worth (Can be negative)
-        """
-        self.command = command
-        self.args = args
-        self.input_str = input_str
-        self.print_file = print_file
-        self.single_file = single_file
-        self.target_file = target_file
-        self.ask_for_target = ask_for_target
-        self.include_filetype = include_filetype
-        self.output_match = output_match
-        if output_regex is not None:
-            self.output_regex = re.compile(re.escape(output_regex))
-        else:
-            self.output_regex = None
-        self.numeric_match = numeric_match
-        self.negate_match = negate_match
-        self.exact_match = exact_match
-        self.print_output = print_output
-        self.timeout = timeout
-        self.fail_notif = fail_notif
-        self.point_val = point_val
+    :param command: The command to be run.
+    :param args: List of arguments to pass to the command. Use %s to denote a file name
+    :param input_str: String to send to stdin
+    :param target_file: The file to replace %s with
+    :param output_match: An exact string that the output should match. If this and output_regex are None, then this Command always 'matches'
+    :param output_regex: A regular expression that the string should match. Combines with output_match.
+    If this and output_match are None, then this Command always 'matches'
+    :param numeric_match: Enables numeric matching. This overrides string and regex matching
+    :param timeout: Time, in seconds, that this Command should run for before timing out
+    :param fail_notif: Message to be sent to user when test fails
+    :param point_val: Amount of points that a successful match is worth (Can be negative)
+    :param print_file: Whether to print the contents of the target_file being tested (Does nothing if no file is selected)
+    :param single_file: Whether to assume the assignment is a single file and use the first file found as %s
+    :param ask_for_target: Whether to prompt for a file in the current directory. Overrides file_target
+    :param include_filetype: Whether to include the filetype in the %s substitution
+    :param print_output: Whether to visibly print the output
+    :param negate_match: Whether to negate the result of checking output_match and output_regex
+    :param exact_match: Whether the naive string match (output_match) should be an exact check or a substring check
+    """
+    command = attr.ib(type=str)
+    args = attr.ib(type=list)
+    input_str = attr.ib(type=str)
+    target_file = attr.ib(type=str)
+    output_match = attr.ib(type=str)
+    output_regex = attr.ib(converter=lambda expr: re.compile(re.escape(expr)))
+    numeric_match = attr.ib(type=list)
+    timeout = attr.ib(type=int)
+    fail_notif = attr.ib(type=dict)
+    point_val = attr.ib(0, type=int)
+    
+    print_file = option()
+    single_file = option()
+    ask_for_target = option()
+    include_filetype = option(True)
+    print_output = option(True)
+    negate_match = option()
+    exact_match = option()
 
     @classmethod
     def from_json_dict(cls, json_dict: dict):
@@ -528,7 +522,6 @@ def init_tempdir():
 def choose(
         choices: Sequence[T],
         message: str = None,
-<<<<<<< HEAD
         formatter: Callable[[T], str] = str) -> T:
     """
     Display the contents of a sequence and have the user enter a 1-based
@@ -536,19 +529,12 @@ def choose(
 
     Takes an optional message to print before showing the choices
     """
-=======
-        formatter: Callable[[T], str]) -> T:
->>>>>>> 7d75a01ccc5cfb4e319669c31c46df2e26422b7c
     if message is not None:
         print(message)
     for i, choice in enumerate(choices, 1):
         print(i, formatter(choice), sep='\t')
 
     i = -1
-<<<<<<< HEAD
-=======
-
->>>>>>> 7d75a01ccc5cfb4e319669c31c46df2e26422b7c
     while i not in range(1, len(choices) + 1):
         try:
             i = int(input())
@@ -560,11 +546,7 @@ def choose(
 
 def main():
     if sys.version_info < (3, 5):
-<<<<<<< HEAD
-        print('Python 3.5+ is required')
-=======
         print("Python 3.5+ is required")
->>>>>>> 7d75a01ccc5cfb4e319669c31c46df2e26422b7c
         exit(1)
 
     init_tempdir()

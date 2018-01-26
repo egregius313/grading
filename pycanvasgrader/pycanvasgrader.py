@@ -14,16 +14,19 @@ REQUIRED File structure:
 """
 
 # built-ins
+from enum import Enum
 import json
 import os
 import shutil
 import re
 import subprocess
 import sys
+from typing import Callable, Sequence, TypeVar
 
 # 3rd-party
 import py
 import requests
+import toml
 
 # globals
 DISARM_ALL = False
@@ -35,6 +38,10 @@ ONLY_RUN_TESTS = False
 NUM_REGEX = re.compile(r'-?\d+\.\d+|-?\d+')
 # r'[+-]?\d+\.\d+|\d+'
 # r'[-+]?\d+(\.\d+)?'
+
+
+Enrollment = Enum('Enrollment', 'teacher student ta observer designer')  # TODO determine whether or not should be capitalized
+T = TypeVar('T')
 
 
 class PyCanvasGrader:
@@ -72,14 +79,14 @@ class PyCanvasGrader:
     def close(self):
         self.session.close()
 
-    def courses(self, enrollment_type: str = None) -> list:
+    def courses(self, enrollment_type: Enrollment = None) -> list:
         """
         :param enrollment_type: (Optional) teacher, student, ta, observer, designer
         :return: A list of the user's courses as dictionaries, optionally filtered by enrollment_type
         """
         url = 'https://sit.instructure.com/api/v1/courses?per_page=100'
         if enrollment_type is not None:
-            url += '&enrollment_type=' + enrollment_type
+            url += '&enrollment_type=' + enrollment_type.name.lower()
 
         response = self.session.get(url)
         return json.loads(response.text)
@@ -193,11 +200,16 @@ class TestSkeleton:
         self.disarm = disarm
 
     @classmethod
-    def from_file(cls, filename):
-        with open('skeletons/' + filename) as skeleton_file:
+    def from_file(cls, filename, dir='skeletons') -> 'TestSkeleton':
+        with open(dir + '/' + filename) as skeleton_file:
             try:
-                data = json.load(skeleton_file)
-            except json.JSONDecodeError:
+                if filename.endswith('.json'):
+                    data = json.load(skeleton_file)
+                elif filename.endswith('.toml'):
+                    data = toml.load(skeleton_file)
+                else:
+                    return None
+            except (json.JSONDecodeError, toml.TomlDecodeError):
                 print('There is an error in the %s skeleton file. This skeleton will not be available' % filename)
                 return None
             try:
@@ -206,12 +218,12 @@ class TestSkeleton:
             except KeyError:
                 return None
             else:
-                disarm = data.get('disarm')
-                if disarm is None:
-                    disarm = False
+                disarm = data.get('disarm', False)
+                defaults = data.get('default', {})
                 test_list = []
                 for json_dict in tests:
-                    test = AssignmentTest.from_json_dict(tests[json_dict])
+                    args = {**defaults, **test[json_dict]}
+                    test = AssignmentTest.from_json_dict(args)
                     if test is not None:
                         test_list.append(test)
 
@@ -415,7 +427,7 @@ class AssignmentTest:
             return True
 
         if self.numeric_match is not None:
-            numeric_match = list(self.numeric_match)  # Clone the list
+            numeric_match = self.numeric_match.copy()
             extracted_nums = map(float, re.findall(NUM_REGEX, result['stdout']))
 
             for number in extracted_nums:
@@ -497,35 +509,57 @@ def restart_program(grader: PyCanvasGrader):
 
 
 def init_tempdir():
+    try:
+        if os.path.exists('temp'):
+            if os.path.exists('old-temp'):
+                shutil.rmtree(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'old-temp'))
+            os.rename('temp', 'old-temp')
+        os.makedirs('temp', exist_ok=True)
+    except BaseException:
+        print('An error occurred while initializing the "temp" directory. Please delete/create the directory manually and re-run the program')
+        exit(1)
+
+
+def choose(
+        choices: Sequence[T],
+        message: str = None,
+        formatter: Callable[[T], str] = str) -> T:
+    """
+    Display the contents of a sequence and have the user enter a 1-based
+    index for their selection.
+
+    Takes an optional message to print before showing the choices
+    """
+    if message is not None:
+        print(message)
+    for i, choice in enumerate(choices, 1):
+        print(i, formatter(choice), sep='\t')
+
+    i = -1
+    while i not in range(1, len(choices) + 1):
         try:
-            if os.path.exists('temp'):
-                if os.path.exists('old-temp'):
-                    shutil.rmtree(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'old-temp'))
-                os.rename('temp', 'old-temp')
-            os.makedirs('temp', exist_ok=True)
-        except BaseException:
-            print('An error occurred while initializing the "temp" directory. Please delete/create the directory manually and re-run the program')
-            exit(1)
+            i = int(input())
+        except (TypeError, ValueError):
+            continue
+
+    return choices[i - 1]
 
 
 def main():
-    version_info = sys.version_info
-    if version_info[0] != 3 and version_info[1] < 5:
-        print("Python 3.5+ is required")
+    if sys.version_info < (3, 5):
+        print('Python 3.5+ is required')
         exit(1)
 
     init_tempdir()
     # Initialize grading session and fetch courses
     grader = PyCanvasGrader()
 
-    action_list = ['teacher', 'ta']
 
-    print('Choose a class role to filter by:')
-    for count, action in enumerate(action_list, 1):
-        print('%i.\t%s' % (count, action))
-    action_choice = choose_val(len(action_list)) - 1
-    selected_role = action_list[action_choice]
-
+    selected_role = Enrollment(choose(
+        ['teacher', 'ta'],
+        'Choose a class role to filter by:'
+    ))
+    
     course_list = grader.courses(selected_role)
     if len(course_list) < 1:
         input('No courses were found. Press enter to restart')
@@ -540,18 +574,18 @@ def main():
     print('Show only ungraded assignments? (y or n):')
     ungraded = choose_bool()
     course_id = course_list[course_choice].get('id')
-    assignment_list = grader.assignments(course_list[course_choice].get('id'), ungraded=ungraded)
+    assignment_list = grader.assignments(course_id, ungraded=ungraded)
 
     if len(assignment_list) < 1:
         input('No assignments were found. Press enter to restart')
         restart_program(grader)
 
     # Have user choose assignment
-    print('Choose an assignment to grade:')
-    for count, assignment in enumerate(assignment_list, 1):
-        print('%i.\t%s' % (count, assignment.get('name')))
-    assignment_choice = choose_val(len(assignment_list)) - 1
-    assignment_id = assignment_list[assignment_choice].get('id')
+    assignment_id = choose(
+        assignment_list,
+        'Choose an assignment to grade:',
+        formatter=lambda assignment: assignment.get('name')
+    ).get('id')
 
     # Get list of submissions for this assignment
     submission_list = grader.submissions(course_id, assignment_id)
@@ -571,15 +605,13 @@ def main():
             if grader.download_submission(submission, os.path.join('temp', str(user_id))):
                 user_submission_dict[user_id] = submission['id']
             else:
-                print('There was a problem downloading this user\'s submission. Skipping.')
+                print("There was a problem downloading this user's submission. Skipping.")
 
     if len(user_submission_dict) < 1:
         input('Could not download any submissions. Press enter to restart')
         restart_program(grader)
 
-    s = ''
-    if len(user_submission_dict) > 1:
-        s = 's'
+    s = 's' if user_submission_dict else ''
     print('Successfully retrieved %i submission%s. Is this correct? (y or n):' % (len(user_submission_dict), s))
     correct = choose_bool()
     if not correct:

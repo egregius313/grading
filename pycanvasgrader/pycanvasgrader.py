@@ -220,14 +220,14 @@ class AssignmentTest:
     :param exact_match: Whether the naive string match (output_match) should be an exact check or a substring check
     """
     command = attr.ib(type=str)
-    args = attr.ib(type=list)
-    input_str = attr.ib(type=str)
-    target_file = attr.ib(type=str)
-    output_match = attr.ib(type=str)
-    output_regex = attr.ib(converter=lambda expr: re.compile(re.escape(expr)))
-    numeric_match = attr.ib(type=list)
-    timeout = attr.ib(type=int)
-    fail_notif = attr.ib(type=dict)
+    args = attr.ib(None, type=list)
+    input_str = attr.ib(None, type=str)
+    target_file = attr.ib(None, type=str)
+    output_match = attr.ib(None, type=str)
+    output_regex = attr.ib(None, converter=lambda expr: re.compile(re.escape(expr)))
+    numeric_match = attr.ib(None, type=list)
+    timeout = attr.ib(None, type=int)
+    fail_notif = attr.ib(None, type=dict)
     point_val = attr.ib(0, type=int)
     
     print_file = option()
@@ -240,38 +240,13 @@ class AssignmentTest:
 
     @classmethod
     def from_json_dict(cls, json_dict: dict):
-        try:
-            command = json_dict['command']
-        except KeyError:
+        if 'command' not in json_dict:
             return None
-        else:
-            args = json_dict.get('args')
-            input_str = json_dict.get('input')
-            print_file = json_dict.get('print_file')
-            single_file = json_dict.get('single_file')
-            target_file = json_dict.get('target_file')
-            ask_for_target = json_dict.get('ask_for_target')
-            include_filetype = json_dict.get('include_filetype')
-            print_output = json_dict.get('print_output')
-            output_match = json_dict.get('output_match')
-            output_regex = json_dict.get('output_regex')
-            numeric_match = json_dict.get('numeric_match')
-            negate_match = json_dict.get('negate_match')
-            exact_match = json_dict.get('exact_match')
-            timeout = json_dict.get('timeout')
-            fail_notif = json_dict.get('fail_notification')
-            point_val = json_dict.get('point_val')
 
-            vars_dict = {'command': command, 'args': args, 'input_str': input_str, 'print_file': print_file, 'single_file': single_file, 'target_file': target_file,
-                         'ask_for_target': ask_for_target, 'include_filetype': include_filetype,
-                         'print_output': print_output, 'output_match': output_match, 'output_regex': output_regex,
-                         'numeric_match': numeric_match, 'negate_match': negate_match, 'exact_match': exact_match,
-                         'timeout': timeout, 'fail_notif': fail_notif, 'point_val': point_val}
-            args_dict = {}
-            for var_name, val in vars_dict.items():
-                if val is not None:
-                    args_dict[var_name] = val
-            return AssignmentTest(**args_dict)
+        json_dict['input_str'] = json_dict.pop('input', None)
+        json_dict['fail_notif'] = json_dict.pop('fail_notification', None)
+
+        return AssignmentTest(**json_dict)
 
     @classmethod
     def target_prompt(cls, command: str):

@@ -21,7 +21,11 @@ import shutil
 import re
 import subprocess
 import sys
+<<<<<<< HEAD
 from typing import Callable, List, Sequence, TypeVar
+=======
+from typing import Callable, Sequence, TypeVar
+>>>>>>> 7d75a01ccc5cfb4e319669c31c46df2e26422b7c
 
 # 3rd-party
 import attrs
@@ -41,8 +45,11 @@ NUM_REGEX = re.compile(r'-?\d+\.\d+|-?\d+')
 # r'[-+]?\d+(\.\d+)?'
 
 
+<<<<<<< HEAD
 # TODO determine whether or not should be capitalized
 Enrollment = Enum('Enrollment', 'teacher student ta observer designer')
+=======
+>>>>>>> 7d75a01ccc5cfb4e319669c31c46df2e26422b7c
 T = TypeVar('T')
 
 
@@ -521,6 +528,7 @@ def init_tempdir():
 def choose(
         choices: Sequence[T],
         message: str = None,
+<<<<<<< HEAD
         formatter: Callable[[T], str] = str) -> T:
     """
     Display the contents of a sequence and have the user enter a 1-based
@@ -528,12 +536,19 @@ def choose(
 
     Takes an optional message to print before showing the choices
     """
+=======
+        formatter: Callable[[T], str]) -> T:
+>>>>>>> 7d75a01ccc5cfb4e319669c31c46df2e26422b7c
     if message is not None:
         print(message)
     for i, choice in enumerate(choices, 1):
         print(i, formatter(choice), sep='\t')
 
     i = -1
+<<<<<<< HEAD
+=======
+
+>>>>>>> 7d75a01ccc5cfb4e319669c31c46df2e26422b7c
     while i not in range(1, len(choices) + 1):
         try:
             i = int(input())
@@ -545,7 +560,11 @@ def choose(
 
 def main():
     if sys.version_info < (3, 5):
+<<<<<<< HEAD
         print('Python 3.5+ is required')
+=======
+        print("Python 3.5+ is required")
+>>>>>>> 7d75a01ccc5cfb4e319669c31c46df2e26422b7c
         exit(1)
 
     init_tempdir()

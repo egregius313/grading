@@ -14,12 +14,14 @@ REQUIRED File structure:
 """
 
 # built-ins
+from enum import Enum
 import json
 import os
 import shutil
 import re
 import subprocess
 import sys
+from typing import Callable, Sequence, TypeVar
 
 # 3rd-party
 import py
@@ -35,6 +37,9 @@ ONLY_RUN_TESTS = False
 NUM_REGEX = re.compile(r'-?\d+\.\d+|-?\d+')
 # r'[+-]?\d+\.\d+|\d+'
 # r'[-+]?\d+(\.\d+)?'
+
+
+T = TypeVar('T')
 
 
 class PyCanvasGrader:
@@ -497,20 +502,39 @@ def restart_program(grader: PyCanvasGrader):
 
 
 def init_tempdir():
+    try:
+        if os.path.exists('temp'):
+            if os.path.exists('old-temp'):
+                shutil.rmtree(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'old-temp'))
+            os.rename('temp', 'old-temp')
+        os.makedirs('temp', exist_ok=True)
+    except BaseException:
+        print('An error occurred while initializing the "temp" directory. Please delete/create the directory manually and re-run the program')
+        exit(1)
+
+
+def choose(
+        choices: Sequence[T],
+        message: str = None,
+        formatter: Callable[[T], str]) -> T:
+    if message is not None:
+        print(message)
+    for i, choice in enumerate(choices, 1):
+        print(i, formatter(choice), sep='\t')
+
+    i = -1
+
+    while i not in range(1, len(choices) + 1):
         try:
-            if os.path.exists('temp'):
-                if os.path.exists('old-temp'):
-                    shutil.rmtree(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'old-temp'))
-                os.rename('temp', 'old-temp')
-            os.makedirs('temp', exist_ok=True)
-        except BaseException:
-            print('An error occurred while initializing the "temp" directory. Please delete/create the directory manually and re-run the program')
-            exit(1)
+            i = int(input())
+        except (TypeError, ValueError):
+            continue
+
+    return choices[i - 1]
 
 
 def main():
-    version_info = sys.version_info
-    if version_info[0] != 3 and version_info[1] < 5:
+    if sys.version_info < (3, 5):
         print("Python 3.5+ is required")
         exit(1)
 

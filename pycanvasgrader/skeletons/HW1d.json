@@ -20,14 +20,14 @@
     "test_float": {
       "command": "out.exe",
       "print_output": true,
-      "numeric_match": [9.53674, 7],
+      "numeric_match": [9.53674, -7],
       "exact_match": false,
       "point_val": 20
     },
     "test_double": {
       "command": "out.exe",
       "print_output": true,
-      "numeric_match": [-8.88178, 16],
+      "numeric_match": [-8.88178, -16],
       "exact_match": false,
       "point_val": 20
     }

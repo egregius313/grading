@@ -24,16 +24,22 @@ Options:
     --skeleton=<skeleton>
 """
 # built-ins
+from enum import Enum
+from functools import partial
 import json
 import os
-import shutil
+import pathlib
 import re
+import shutil
 import subprocess
 import sys
+from typing import Callable, List, Sequence, TypeVar
 
 # 3rd-party
+import attrs
 import py
 import requests
+import toml
 
 # globals
 DISARM_ALL = False
@@ -45,6 +51,11 @@ ONLY_RUN_TESTS = False
 NUM_REGEX = re.compile(r'-?\d+\.\d+|-?\d+')
 # r'[+-]?\d+\.\d+|\d+'
 # r'[-+]?\d+(\.\d+)?'
+
+
+# TODO determine whether or not should be capitalized
+Enrollment = Enum('Enrollment', 'teacher student ta observer designer')
+T = TypeVar('T')
 
 
 class PyCanvasGrader:
@@ -82,14 +93,14 @@ class PyCanvasGrader:
     def close(self):
         self.session.close()
 
-    def courses(self, enrollment_type: str = None) -> list:
+    def courses(self, enrollment_type: Enrollment = None) -> list:
         """
         :param enrollment_type: (Optional) teacher, student, ta, observer, designer
         :return: A list of the user's courses as dictionaries, optionally filtered by enrollment_type
         """
         url = 'https://sit.instructure.com/api/v1/courses?per_page=100'
         if enrollment_type is not None:
-            url += '&enrollment_type=' + enrollment_type
+            url += '&enrollment_type=' + enrollment_type.name.lower()
 
         response = self.session.get(url)
         return json.loads(response.text)
@@ -192,180 +203,80 @@ class PyCanvasGrader:
             return json.loads(response.text)
 
 
-class TestSkeleton:
+def option(default=False):
     """
-    An abstract skeleton to handle testing of a specific group of files
+    Constructor for optional boolean configuartion attributes
     """
-
-    def __init__(self, descriptor: str, tests: list, disarm: bool = False):
-        """
-        :param descriptor: The description of this TestSkeleton
-        :param tests: A list of AssignmentTest objects. These will be run in the order that they are added.
-        :param disarm: Whether to actually submit grades/send messages
-        """
-        self.descriptor = descriptor
-        self.tests = tests
-        self.disarm = disarm
-
-    @classmethod
-    def from_file(cls, filename):
-        with open('skeletons/' + filename) as skeleton_file:
-            try:
-                data = json.load(skeleton_file)
-            except json.JSONDecodeError:
-                print('There is an error in the %s skeleton file. This skeleton will not be available' % filename)
-                return None
-            try:
-                descriptor = data['descriptor']
-                tests = data['tests']
-            except KeyError:
-                return None
-            else:
-                disarm = data.get('disarm')
-                if disarm is None:
-                    disarm = False
-                test_list = []
-                for json_dict in tests:
-                    test = AssignmentTest.from_json_dict(tests[json_dict])
-                    if test is not None:
-                        test_list.append(test)
-
-                return TestSkeleton(descriptor, test_list, disarm)
-
-    def run_tests(self, grader: PyCanvasGrader, user_id: int) -> int:
-        global DISARM_ALL
-        DISARM_ALL = self.disarm
-
-        total_score = 0
-        for count, test in enumerate(self.tests):
-            print('\n--Running test %i--' % (count + 1))
-            if test.run_and_match():
-                if test.point_val > 0:
-                    print('--Adding %i points--' % test.point_val)
-                elif test.point_val == 0:
-                    print('--No points set for this test--')
-                else:
-                    print('--Subtracting %i points--' % abs(test.point_val))
-                total_score += test.point_val
-            else:
-                print('--Test failed--')
-                if test.fail_notif:
-                    try:
-                        body = test.fail_notif['body']
-                    except ValueError:
-                        pass
-                    else:
-                        subject = test.fail_notif.get('subject')
-                        grader.message_user(user_id, body, subject)
-
-            print('--Current score: %i--' % total_score)
-        return total_score
+    return attr.ib(default=default, type=bool)
 
 
+@attr.s
 class AssignmentTest:
     """
     An abstract test to be run on an assignment submission
     TODO 'sequential' command requirement
-    """
 
-    def __init__(self, command: str, args: list = None, input_str: str = None, print_file: bool = False, single_file: bool = False, target_file: str = None,
-                 ask_for_target: bool = False, include_filetype: bool = True, print_output: bool = True,
-                 output_match: str = None, output_regex: str = None, numeric_match: list = None,
-                 negate_match: bool = False, exact_match: bool = False, timeout: int = None, fail_notif: dict = None, point_val: int = 0):
-        """
-        :param command: The command to be run.
-        :param args: List of arguments to pass to the command. Use %s to denote a file name
-        :param input_str: String to send to stdin
-        :param print_file: Whether to print the contents of the target_file being tested (Does nothing if no file is selected)
-        :param single_file: Whether to assume the assignment is a single file and use the first file found as %s
-        :param target_file: The file to replace %s with
-        :param ask_for_target: Whether to prompt for a file in the current directory. Overrides file_target
-        :param include_filetype: Whether to include the filetype in the %s substitution
-        :param print_output: Whether to visibly print the output
-        :param output_match: An exact string that the output should match. If this and output_regex are None, then this Command always 'matches'
-        :param output_regex: A regular expression that the string should match. Combines with output_match.
-        If this and output_match are None, then this Command always 'matches'
-        :param numeric_match: Enables numeric matching. This overrides string and regex matching
-        :param negate_match: Whether to negate the result of checking output_match and output_regex
-        :param exact_match: Whether the naive string match (output_match) should be an exact check or a substring check
-        :param timeout: Time, in seconds, that this Command should run for before timing out
-        :param fail_notif: Message to be sent to user when test fails
-        :param point_val: Amount of points that a successful match is worth (Can be negative)
-        """
-        self.command = command
-        self.args = args
-        self.input_str = input_str
-        self.print_file = print_file
-        self.single_file = single_file
-        self.target_file = target_file
-        self.ask_for_target = ask_for_target
-        self.include_filetype = include_filetype
-        self.output_match = output_match
-        if output_regex is not None:
-            self.output_regex = re.compile(re.escape(output_regex))
-        else:
-            self.output_regex = None
-        self.numeric_match = numeric_match
-        self.negate_match = negate_match
-        self.exact_match = exact_match
-        self.print_output = print_output
-        self.timeout = timeout
-        self.fail_notif = fail_notif
-        self.point_val = point_val
+    :param command: The command to be run.
+    :param args: List of arguments to pass to the command. Use %s to denote a file name
+    :param input_str: String to send to stdin
+    :param target_file: The file to replace %s with
+    :param output_match: An exact string that the output should match. If this and output_regex are None, then this Command always 'matches'
+    :param output_regex: A regular expression that the string should match. Combines with output_match.
+    If this and output_match are None, then this Command always 'matches'
+    :param numeric_match: Enables numeric matching. This overrides string and regex matching
+    :param timeout: Time, in seconds, that this Command should run for before timing out
+    :param fail_notif: Message to be sent to user when test fails
+    :param point_val: Amount of points that a successful match is worth (Can be negative)
+    :param print_file: Whether to print the contents of the target_file being tested (Does nothing if no file is selected)
+    :param single_file: Whether to assume the assignment is a single file and use the first file found as %s
+    :param ask_for_target: Whether to prompt for a file in the current directory. Overrides file_target
+    :param include_filetype: Whether to include the filetype in the %s substitution
+    :param print_output: Whether to visibly print the output
+    :param negate_match: Whether to negate the result of checking output_match and output_regex
+    :param exact_match: Whether the naive string match (output_match) should be an exact check or a substring check
+    """
+    command = attr.ib(type=str)
+    args = attr.ib(None, type=list)
+    input_str = attr.ib(None, type=str)
+    target_file = attr.ib(None, type=str)
+    output_match = attr.ib(None, type=str)
+    output_regex = attr.ib(None, converter=lambda expr: re.compile(re.escape(expr)))
+    numeric_match = attr.ib(None, type=list)
+    timeout = attr.ib(None, type=int)
+    fail_notif = attr.ib(None, type=dict)
+    point_val = attr.ib(0, type=int)
+    
+    print_file = option()
+    single_file = option()
+    ask_for_target = option()
+    include_filetype = option(True)
+    print_output = option(True)
+    negate_match = option()
+    exact_match = option()
 
     @classmethod
     def from_json_dict(cls, json_dict: dict):
-        try:
-            command = json_dict['command']
-        except KeyError:
+        if 'command' not in json_dict:
             return None
-        else:
-            args = json_dict.get('args')
-            input_str = json_dict.get('input')
-            print_file = json_dict.get('print_file')
-            single_file = json_dict.get('single_file')
-            target_file = json_dict.get('target_file')
-            ask_for_target = json_dict.get('ask_for_target')
-            include_filetype = json_dict.get('include_filetype')
-            print_output = json_dict.get('print_output')
-            output_match = json_dict.get('output_match')
-            output_regex = json_dict.get('output_regex')
-            numeric_match = json_dict.get('numeric_match')
-            negate_match = json_dict.get('negate_match')
-            exact_match = json_dict.get('exact_match')
-            timeout = json_dict.get('timeout')
-            fail_notif = json_dict.get('fail_notification')
-            point_val = json_dict.get('point_val')
 
-            vars_dict = {'command': command, 'args': args, 'input_str': input_str, 'print_file': print_file, 'single_file': single_file, 'target_file': target_file,
-                         'ask_for_target': ask_for_target, 'include_filetype': include_filetype,
-                         'print_output': print_output, 'output_match': output_match, 'output_regex': output_regex,
-                         'numeric_match': numeric_match, 'negate_match': negate_match, 'exact_match': exact_match,
-                         'timeout': timeout, 'fail_notif': fail_notif, 'point_val': point_val}
-            args_dict = {}
-            for var_name, val in vars_dict.items():
-                if val is not None:
-                    args_dict[var_name] = val
-            return AssignmentTest(**args_dict)
+        json_dict['input_str'] = json_dict.pop('input', None)
+        json_dict['fail_notif'] = json_dict.pop('fail_notification', None)
+
+        return AssignmentTest(**json_dict)
 
     @classmethod
     def target_prompt(cls, command: str):
-        sub = 0
-        file_list = []
-        if len(os.listdir(os.getcwd())) < 1:
-            print('This directory is empty, unable to choose a file for "%s" command' % command)
+        path = pathlib.Path(os.getcwd())
+        files = [file for file in path.iterdir() if file.is_file()]
+
+        if not files:
+            print('This directory is empty, unable to choose a file for the "%s" command' % command)
             return None
 
-        print('Select a file for the "%s" command:' % command)
-        for count, file_name in enumerate(os.listdir(os.getcwd())):
-            if os.path.isdir(file_name):
-                sub += 1
-                continue
-            file_list.append(file_name)
-            print('%i.\t%s' % (count - sub + 1, file_name))  # The minus 1 is to hide the 0-based numbering
-
-        selection = choose_val(len(file_list)) - 1
-        return file_list[selection]
+        return choose(
+            files,
+            'Select a file for the "%s" command:' % command
+        ).name
 
     def run(self) -> dict:
         """
@@ -430,7 +341,7 @@ class AssignmentTest:
             return True
 
         if self.numeric_match is not None:
-            numeric_match = list(self.numeric_match)  # Clone the list
+            numeric_match = self.numeric_match.copy()
             extracted_nums = map(float, re.findall(NUM_REGEX, result['stdout']))
 
             for number in extracted_nums:
@@ -473,11 +384,82 @@ class AssignmentTest:
         return self.negate_match
 
 
+@attr.s
+class TestSkeleton:
+    """
+    An abstract skeleton to handle testing of a specific group of files
+    """
+
+    descriptor = attr.ib(type=str)
+    tests = attr.ib(type=List[AssignmentTest])  # Tests to run in the order that they are added.
+    disarm = attr.ib(default=False, type=bool)  # Whether to actually submit grades/send messages
+
+    @classmethod
+    def from_file(cls, filename, dir='skeletons') -> 'TestSkeleton':
+        with open(dir + '/' + filename) as skeleton_file:
+            try:
+                if filename.endswith('.json'):
+                    data = json.load(skeleton_file)
+                elif filename.endswith('.toml'):
+                    data = toml.load(skeleton_file)
+                else:
+                    return None
+            except (json.JSONDecodeError, toml.TomlDecodeError):
+                print('There is an error in the %s skeleton file. This skeleton will not be available' % filename)
+                return None
+            try:
+                descriptor = data['descriptor']
+                tests = data['tests']
+            except KeyError:
+                return None
+            else:
+                disarm = data.get('disarm', False)
+                defaults = data.get('default', {})
+                test_list = []
+                for json_dict in tests:
+                    args = {**defaults, **test[json_dict]}
+                    test = AssignmentTest.from_json_dict(args)
+                    if test is not None:
+                        test_list.append(test)
+
+                return TestSkeleton(descriptor, test_list, disarm)
+
+    def run_tests(self, grader: PyCanvasGrader, user_id: int) -> int:
+        global DISARM_ALL
+        DISARM_ALL = self.disarm
+
+        total_score = 0
+        for count, test in enumerate(self.tests):
+            print('\n--Running test %i--' % (count + 1))
+            if test.run_and_match():
+                if test.point_val > 0:
+                    print('--Adding %i points--' % test.point_val)
+                elif test.point_val == 0:
+                    print('--No points set for this test--')
+                else:
+                    print('--Subtracting %i points--' % abs(test.point_val))
+                total_score += test.point_val
+            else:
+                print('--Test failed--')
+                if test.fail_notif:
+                    try:
+                        body = test.fail_notif['body']
+                    except ValueError:
+                        pass
+                    else:
+                        subject = test.fail_notif.get('subject')
+                        grader.message_user(user_id, body, subject)
+
+            print('--Current score: %i--' % total_score)
+        return total_score
+
+
+
 def choose_val(hi_num: int, allow_zero: bool = False) -> int:
     val = 'none'
 
     while True:
-        if str.isdigit(val) and int(val) <= hi_num:
+        if val.isdigit() and int(val) <= hi_num:
             if (allow_zero and int(val) >= 0) or (not allow_zero and int(val) > 0):
                 break
         val = input()
@@ -512,20 +494,44 @@ def restart_program(grader: PyCanvasGrader):
 
 
 def init_tempdir():
+    try:
+        if os.path.exists('temp'):
+            if os.path.exists('old-temp'):
+                shutil.rmtree(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'old-temp'))
+            os.rename('temp', 'old-temp')
+        os.makedirs('temp', exist_ok=True)
+    except BaseException:
+        print('An error occurred while initializing the "temp" directory. Please delete/create the directory manually and re-run the program')
+        exit(1)
+
+
+def choose(
+        choices: Sequence[T],
+        message: str = None,
+        formatter: Callable[[T], str] = str) -> T:
+    """
+    Display the contents of a sequence and have the user enter a 1-based
+    index for their selection.
+
+    Takes an optional message to print before showing the choices
+    """
+    if message is not None:
+        print(message)
+    for i, choice in enumerate(choices, 1):
+        print(i, formatter(choice), sep='\t')
+
+    i = -1
+    while i not in range(1, len(choices) + 1):
         try:
-            if os.path.exists('temp'):
-                if os.path.exists('old-temp'):
-                    shutil.rmtree(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'old-temp'))
-                os.rename('temp', 'old-temp')
-            os.makedirs('temp', exist_ok=True)
-        except BaseException:
-            print('An error occurred while initializing the "temp" directory. Please delete/create the directory manually and re-run the program')
-            exit(1)
+            i = int(input())
+        except (TypeError, ValueError):
+            continue
+
+    return choices[i - 1]
 
 
 def main():
-    version_info = sys.version_info
-    if version_info[0] != 3 and version_info[1] < 5:
+    if sys.version_info < (3, 5):
         print("Python 3.5+ is required")
         exit(1)
 
@@ -533,40 +539,37 @@ def main():
     # Initialize grading session and fetch courses
     grader = PyCanvasGrader()
 
-    action_list = ['teacher', 'ta']
 
-    print('Choose a class role to filter by:')
-    for count, action in enumerate(action_list, 1):
-        print('%i.\t%s' % (count, action))
-    action_choice = choose_val(len(action_list)) - 1
-    selected_role = action_list[action_choice]
-
+    selected_role = Enrollment(choose(
+        ['teacher', 'ta'],
+        'Choose a class role to filter by:'
+    ))
+    
     course_list = grader.courses(selected_role)
     if len(course_list) < 1:
         input('No courses were found. Press enter to restart')
         restart_program(grader)
 
     # Have user select course
-    print('Choose a course from the following list:')
-    for count, course in enumerate(course_list, 1):
-        print('%i.\t%s (%s)' % (count, course.get('name'), course.get('course_code')))
-    course_choice = choose_val(len(course_list)) - 1  # the minus 1 is to hide the 0-based numbering
-
+    course_choice_id = choose(
+        course_list,
+        'Choose a course from the following list:',
+        formatter=lambda course: '%s (%s)' % (course.get('name'), course.get('course_code'))
+    ).get('id')
     print('Show only ungraded assignments? (y or n):')
     ungraded = choose_bool()
-    course_id = course_list[course_choice].get('id')
-    assignment_list = grader.assignments(course_list[course_choice].get('id'), ungraded=ungraded)
-
+    assignment_list = grader.assignments(course_choice_id, ungraded=ungraded)
+    
     if len(assignment_list) < 1:
         input('No assignments were found. Press enter to restart')
         restart_program(grader)
 
     # Have user choose assignment
-    print('Choose an assignment to grade:')
-    for count, assignment in enumerate(assignment_list, 1):
-        print('%i.\t%s' % (count, assignment.get('name')))
-    assignment_choice = choose_val(len(assignment_list)) - 1
-    assignment_id = assignment_list[assignment_choice].get('id')
+    assignment_id = choose(
+        assignment_list,
+        'Choose an assignment to grade:',
+        formatter=lambda assignment: assignment.get('name')
+    ).get('id')
 
     # Get list of submissions for this assignment
     submission_list = grader.submissions(course_id, assignment_id)
@@ -586,15 +589,13 @@ def main():
             if grader.download_submission(submission, os.path.join('temp', str(user_id))):
                 user_submission_dict[user_id] = submission['id']
             else:
-                print('There was a problem downloading this user\'s submission. Skipping.')
+                print("There was a problem downloading this user's submission. Skipping.")
 
     if len(user_submission_dict) < 1:
         input('Could not download any submissions. Press enter to restart')
         restart_program(grader)
 
-    s = ''
-    if len(user_submission_dict) > 1:
-        s = 's'
+    s = 's' if user_submission_dict else ''
     print('Successfully retrieved %i submission%s. Is this correct? (y or n):' % (len(user_submission_dict), s))
     correct = choose_bool()
     if not correct:

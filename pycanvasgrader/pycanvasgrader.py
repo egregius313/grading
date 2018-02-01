@@ -117,7 +117,12 @@ class PyCanvasGrader:
         url = 'https://sit.instructure.com/api/v1/courses/' + str(course_id) + '/assignments/' + str(assignment_id) + '/submissions?per_page=100'
 
         response = self.session.get(url)
-        return json.loads(response.text)
+        final_response = json.loads(response.text)
+        while response.links.get("next"):
+            response = self.session.get(response.links['next']['url'])
+            final_response.extend(json.loads(response.text))
+
+        return final_response
 
     def download_submission(self, submission: dict, filepath: str) -> bool:
         """

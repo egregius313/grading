@@ -1,7 +1,10 @@
 #!/usr/bin/env python3.6
 """
+pycanvasgrader
+
 Automates the grading of programming assignments on Canvas.
-MUST create an 'access.token' file in the same directory as this file with a valid Canvas OAuth2 token
+MUST create an 'access.token' file in the same directory as this file with
+a valid Canvas OAuth2 token
 REQUIRED File structure:
 - pycanvasgrader
   -- skeletons
@@ -11,8 +14,15 @@ REQUIRED File structure:
 
   TODO implement skeleton creation wizard
   TODO test/implement visual grading
-"""
 
+Usage:
+    pycanvasgrader [options]
+
+Options:
+    --ua, --ungraded-assignments
+    --us, --ungraded-submissions
+    --skeleton=<skeleton>
+"""
 # built-ins
 import json
 import os

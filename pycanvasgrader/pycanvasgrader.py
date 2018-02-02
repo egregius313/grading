@@ -84,7 +84,7 @@ class PyCanvasGrader:
             with open('access.token', 'r', encoding='UTF-8') as access_file:
                 for line in access_file:
                     token = line.strip()
-                    if isinstance(token, str) and len(token) > 2:
+                    if len(token) > 2:
                         return token
         except FileNotFoundError:
             print("Could not find an access.token file. You must place your Canvas OAuth token in a file named 'access.token', in this directory.")
@@ -429,8 +429,8 @@ class TestSkeleton:
         DISARM_ALL = self.disarm
 
         total_score = 0
-        for count, test in enumerate(self.tests):
-            print('\n--Running test %i--' % (count + 1))
+        for count, test in enumerate(self.tests, 1):
+            print('\n--Running test %i--' % count)
             if test.run_and_match():
                 if test.point_val > 0:
                     print('--Adding %i points--' % test.point_val)
@@ -456,21 +456,19 @@ class TestSkeleton:
 
 
 def choose_val(hi_num: int, allow_zero: bool = False) -> int:
-    val = 'none'
-
-    while True:
-        if val.isdigit() and int(val) <= hi_num:
-            if (allow_zero and int(val) >= 0) or (not allow_zero and int(val) > 0):
-                break
-        val = input()
-    return int(val)
+    for val in iter(input, None):
+        if not val.isdigit():
+            continue
+        
+        i = int(val)
+        if i in range(0 if allow_zero else 1, hi_num):
+            return i
 
 
 def choose_bool() -> bool:
-    val = 'none'
-    while not str.lower(val) in ['y', 'n', 'yes', 'no']:
-        val = input()
-    return val in ['y', 'yes']
+    for b in iter(input, None):
+        if b.lower() in {'y', 'n', 'yes', 'no'}:
+            return b.startswith(('y', 'Y'))
 
 
 def parse_skeletons() -> list:

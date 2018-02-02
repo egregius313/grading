@@ -442,10 +442,10 @@ class TestSkeleton:
                     print('--No points set for this test--')
                 else:
                     print('--Subtracting %i points--' % abs(test.point_val))
-                    
                 total_score += test.point_val
             else:
                 print('--Test failed--')
+                failures[test._name] = -test.point_val
                 if test.fail_notif:
                     try:
                         body = test.fail_notif['body']
@@ -609,7 +609,8 @@ def main():
         print('Could not find any skeleton files in the skeletons directory.',
               'Would you like to create one now? (y or n):')
         if choose_bool():
-            print('unimplemented')
+            # TODO implement the skeleton wizard
+            print(NotImplemented)
         else:
             pass
         exit(0)
@@ -683,6 +684,9 @@ def main():
         except (WindowsError, OSError):
             print('Unable to leave current directory')
             exit(1)
+
+    with open('failures.json', 'w') as failures_file:
+        json.dump(failures, failures_file)
     print('Finished grading all submissions for this assignment')
 
 

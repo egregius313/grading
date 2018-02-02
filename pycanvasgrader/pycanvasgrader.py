@@ -405,7 +405,7 @@ class TestSkeleton:
                 else:
                     return None
             except (json.JSONDecodeError, toml.TomlDecodeError):
-                print('There is an error in the %s skeleton file. This skeleton will not be available' % filename)
+                print('There is an error in the', filename, 'skeleton file. This skeleton will not be available')
                 return None
             try:
                 descriptor = data['descriptor']
@@ -608,11 +608,11 @@ def main():
             pass
         exit(0)
 
-    print('Choose a skeleton to use for grading this assignment:')
-    for count, skeleton in enumerate(skeleton_list, 1):
-        print('%i.\t%s' % (count, skeleton.descriptor))
-    skeleton_choice = choose_val(len(skeleton_list)) - 1
-    selected_skeleton = skeleton_list[skeleton_choice]
+    selected_skeleton = choose(
+        skeleton_list,
+        'Choose a skeleton to use for grading this assignment:',
+        formatter=lambda skel: skel.descriptor
+    )
 
     name_dict = {}
     print('Students to grade: [Name (email)]\n----')
@@ -620,12 +620,17 @@ def main():
         user_data = grader.user(course_id, user_id)
         if user_data.get('name') is not None:
             name_dict[user_id] = user_data['name']
-        print(str(user_data.get('name')) + '\t(%s)' % user_data.get('email'))
+        name = user_data.get('name')
+        email = user_data.get('email')
+        print(name, '(%s)' % email, sep='\t')
     print('----\n')
 
     print('Require confirmation before submitting grades? (y or n)')
     grade_conf = choose_bool()
 
+    # type: Dict[name, List[test_case]]
+    # failures = {}
+    
     input('Press enter to begin grading\n')
     for cur_user_id in user_submission_dict:
         try:
@@ -647,11 +652,7 @@ def main():
                 print('Grade submitted')
                 break
             else:
-                print('Choose an action:')
-                for count, action in enumerate(action_list, 1):
-                    print('%i.\t%s' % (count, action))
-                action_choice = choose_val(len(action_list)) - 1
-                selected_action = action_list[action_choice]
+                selected_action = choose(action_list, 'Choose an action:')
 
                 if selected_action == 'Submit this grade':
                     grader.grade_submission(course_id, assignment_id, cur_user_id, score)

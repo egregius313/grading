@@ -239,7 +239,8 @@ class AssignmentTest:
     input_str = attr.ib(None, type=str)
     target_file = attr.ib(None, type=str)
     output_match = attr.ib(None, type=str)
-    output_regex = attr.ib(None, converter=lambda expr: re.compile(re.escape(expr)))
+    output_regex = attr.ib(None, converter=(
+        lambda expr: re.compile(re.escape(expr)) if expr is not None else None))
     numeric_match = attr.ib(None, type=list)
     timeout = attr.ib(None, type=int)
     fail_notif = attr.ib(None, type=dict)
@@ -254,7 +255,7 @@ class AssignmentTest:
     exact_match = option()
 
     # The name of the test case
-    _name = attr.ib(None, type=str)
+    name = attr.ib(None, type=str)
     
     @classmethod
     def from_json_dict(cls, json_dict: dict):
@@ -419,7 +420,7 @@ class TestSkeleton:
                 defaults = data.get('default', {})
                 test_list = []
                 for name, json_dict in tests.items():
-                    args = {**defaults, **json_dict, '_name': name}
+                    args = {**defaults, **json_dict, 'name': name}
                     test = AssignmentTest.from_json_dict(args)
                     if test is not None:
                         test_list.append(test)
@@ -445,7 +446,7 @@ class TestSkeleton:
                 total_score += test.point_val
             else:
                 print('--Test failed--')
-                failures[test._name] = -test.point_val
+                failures[test.name] = -test.point_val
                 if test.fail_notif:
                     try:
                         body = test.fail_notif['body']
@@ -521,7 +522,7 @@ def choose(
     if message is not None:
         print(message)
     for i, choice in enumerate(choices, 1):
-        print(i, formatter(choice), sep='\t')
+        print(i, formatter(choice), sep='.\t')
 
     i = -1
     while i not in range(1, len(choices) + 1):
@@ -542,7 +543,7 @@ def main():
     # Initialize grading session and fetch courses
     grader = PyCanvasGrader()
 
-    selected_role = Enrollment(choose(
+    selected_role = getattr(Enrollment, choose(
         ['teacher', 'ta'],
         'Choose a class role to filter by:'
     ))

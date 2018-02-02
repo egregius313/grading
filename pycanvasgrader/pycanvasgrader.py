@@ -36,7 +36,7 @@ import sys
 from typing import Callable, List, Sequence, TypeVar
 
 # 3rd-party
-import attrs
+import attr
 import py
 import requests
 import toml

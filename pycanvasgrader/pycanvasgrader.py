@@ -25,7 +25,6 @@ Options:
 """
 # built-ins
 from enum import Enum
-from functools import partial
 import json
 import os
 import pathlib
@@ -33,7 +32,7 @@ import re
 import shutil
 import subprocess
 import sys
-from typing import Callable, List, Sequence, TypeVar
+from typing import Callable, Dict, List, Sequence, Tuple, TypeVar
 
 # 3rd-party
 import attr
@@ -128,7 +127,7 @@ class PyCanvasGrader:
 
         response = self.session.get(url)
         final_response = json.loads(response.text)
-        while response.links.get("next"):
+        while response.links.get('next'):
             response = self.session.get(response.links['next']['url'])
             final_response.extend(json.loads(response.text))
 
@@ -254,6 +253,9 @@ class AssignmentTest:
     negate_match = option()
     exact_match = option()
 
+    # The name of the test case
+    _name = attr.ib(None, type=str)
+    
     @classmethod
     def from_json_dict(cls, json_dict: dict):
         if 'command' not in json_dict:
@@ -299,7 +301,7 @@ class AssignmentTest:
         if filename is not None:
             if self.print_file:
                 print('--FILE--')
-                with open(filename, "r") as f:
+                with open(filename, 'r') as f:
                     shutil.copyfileobj(f, sys.stdout)
                 print('--END FILE--')
             command = self.command.replace('%s', filename)
@@ -416,19 +418,21 @@ class TestSkeleton:
                 disarm = data.get('disarm', False)
                 defaults = data.get('default', {})
                 test_list = []
-                for json_dict in tests:
-                    args = {**defaults, **test[json_dict]}
+                for name, json_dict in tests.items():
+                    args = {**defaults, **json_dict, '_name': name}
                     test = AssignmentTest.from_json_dict(args)
                     if test is not None:
                         test_list.append(test)
 
                 return TestSkeleton(descriptor, test_list, disarm)
 
-    def run_tests(self, grader: PyCanvasGrader, user_id: int) -> int:
+    def run_tests(self, grader: PyCanvasGrader, user_id: int) -> Tuple[int, Dict]:
         global DISARM_ALL
         DISARM_ALL = self.disarm
 
         total_score = 0
+        failures = {}
+
         for count, test in enumerate(self.tests, 1):
             print('\n--Running test %i--' % count)
             if test.run_and_match():
@@ -438,6 +442,7 @@ class TestSkeleton:
                     print('--No points set for this test--')
                 else:
                     print('--Subtracting %i points--' % abs(test.point_val))
+                    
                 total_score += test.point_val
             else:
                 print('--Test failed--')
@@ -451,8 +456,7 @@ class TestSkeleton:
                         grader.message_user(user_id, body, subject)
 
             print('--Current score: %i--' % total_score)
-        return total_score
-
+        return total_score, failures
 
 
 def choose_val(hi_num: int, allow_zero: bool = False) -> int:
@@ -499,7 +503,8 @@ def init_tempdir():
             os.rename('temp', 'old-temp')
         os.makedirs('temp', exist_ok=True)
     except BaseException:
-        print('An error occurred while initializing the "temp" directory. Please delete/create the directory manually and re-run the program')
+        print('An error occurred while initializing the "temp" directory.',
+              'Please delete/create the directory manually and re-run the program')
         exit(1)
 
 
@@ -530,13 +535,12 @@ def choose(
 
 def main():
     if sys.version_info < (3, 5):
-        print("Python 3.5+ is required")
+        print('Python 3.5+ is required')
         exit(1)
 
     init_tempdir()
     # Initialize grading session and fetch courses
     grader = PyCanvasGrader()
-
 
     selected_role = Enrollment(choose(
         ['teacher', 'ta'],
@@ -549,14 +553,14 @@ def main():
         restart_program(grader)
 
     # Have user select course
-    course_choice_id = choose(
+    course_id = choose(
         course_list,
         'Choose a course from the following list:',
         formatter=lambda course: '%s (%s)' % (course.get('name'), course.get('course_code'))
     ).get('id')
     print('Show only ungraded assignments? (y or n):')
     ungraded = choose_bool()
-    assignment_list = grader.assignments(course_choice_id, ungraded=ungraded)
+    assignment_list = grader.assignments(course_id, ungraded=ungraded)
     
     if len(assignment_list) < 1:
         input('No assignments were found. Press enter to restart')
@@ -580,7 +584,8 @@ def main():
     # Match the user IDs found in the zip with the IDs in the online submission
     user_submission_dict = {}
     for submission in submission_list:
-        if ungraded_only and submission.get('grader_id') is not None:  # Skip assignments that have been graded already
+        # Skip assignments that have been graded already
+        if ungraded_only and submission.get('grader_id') is not None:
             continue
         user_id = submission.get('user_id')
         if submission.get('attachments') is not None:
@@ -601,7 +606,8 @@ def main():
 
     skeleton_list = parse_skeletons()
     if len(skeleton_list) < 1:
-        print('Could not find any skeleton files in the skeletons directory. Would you like to create one now? (y or n):')
+        print('Could not find any skeleton files in the skeletons directory.',
+              'Would you like to create one now? (y or n):')
         if choose_bool():
             print('unimplemented')
         else:
@@ -629,8 +635,8 @@ def main():
     grade_conf = choose_bool()
 
     # type: Dict[name, List[test_case]]
-    # failures = {}
-    
+    failures = {}
+
     input('Press enter to begin grading\n')
     for cur_user_id in user_submission_dict:
         try:
@@ -639,14 +645,18 @@ def main():
             print('Could not access files for user "%i". Skipping' % cur_user_id)
             continue
         print('--Grading user "%s"--' % name_dict.get(cur_user_id))
-        score = selected_skeleton.run_tests(grader, cur_user_id)
+        score, issues = selected_skeleton.run_tests(grader, cur_user_id)
 
         if score < 0:
             score = 0
-        action_list = ['Submit this grade', 'Modify this grade', 'Skip this submission', 'Re-grade this submission']
+
+        action_list = [
+            'Submit this grade', 'Modify this grade',
+            'Skip this submission', 'Re-grade this submission'
+        ]
 
         while True:
-            print('\n--All tests completed--\nGrade for this assignment: %i' % score)
+            print('\n--All tests completed--\nGrade for this assignment:', score)
             if not grade_conf:
                 grader.grade_submission(course_id, assignment_id, cur_user_id, score)
                 print('Grade submitted')
@@ -664,11 +674,14 @@ def main():
                 elif selected_action == 'Skip this submission':
                     break
                 elif selected_action == 'Re-grade this submission':
-                    score = selected_skeleton.run_tests(grader, cur_user_id)
+                    score, issues = selected_skeleton.run_tests(grader, cur_user_id)
+        if len(issues) > 0:
+            name = name_dict.get(cur_user_id, str(cur_user_id))
+            failures[name] = issues
         try:
             os.chdir(os.path.join('..', '..'))
         except (WindowsError, OSError):
-            print("Unable to leave current directory")
+            print('Unable to leave current directory')
             exit(1)
     print('Finished grading all submissions for this assignment')
 
